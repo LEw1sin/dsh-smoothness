@@ -8,8 +8,10 @@ work in a fresh Session.
 - Adds **Archive / Load** (`存档 / 读档`) to the `/` command menu.
 - **Archive**: summarizes the live Session into a handoff manual covering what
   is done, what remains, pitfalls, cautions, user preferences, key files, and
-  commands. The manual is stored under
-  `$DSH_HOME/storages/dsh-save-load/archives/`.
+  commands. A floating status window reports progress. The manual is stored
+  under `$DSH_HOME/storages/dsh-save-load/archives/`. Repeated clicks share one
+  in-flight request; an unchanged Session reuses its archive, and a later save
+  with new events updates that same archive rather than creating duplicates.
 - **Load**: opens a new Session with the selected handoff placed in the
   composer. Press Enter in the new Session to start the relay.
 - The archive is plain JSON, local to the Host, and never written into the

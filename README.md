@@ -70,7 +70,7 @@ See [dsh-assets/README.md](dsh-assets/README.md) for details and limits.
 ## dsh-save-load — Save / Load
 
 - Adds **Archive / Load** (`存档 / 读档`) to the `/` command menu.
-- **Archive** summarizes the live Session into a handoff manual: completed work, unfinished work and next steps, pitfalls, cautions, user preferences, key files, and current state.
+- **Archive** summarizes the live Session into a handoff manual: completed work, unfinished work and next steps, pitfalls, cautions, user preferences, key files, and current state. A floating status window reports progress. Repeated clicks share one in-flight archive; one unchanged Session reuses its existing archive, and a later save with new events updates that same archive instead of creating a duplicate.
 - **Load** opens a new Session with the selected handoff already in the composer; press Enter to start the relay.
 - Archives are local JSON files under `$DSH_HOME/storages/dsh-save-load/archives/`. The source Session log is never modified.
 

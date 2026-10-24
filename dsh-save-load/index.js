@@ -21,6 +21,7 @@ const ARCHIVE_ID = /^[A-Za-z0-9_-]{1,120}$/;
 
 const HOME = process.env.DSH_HOME || path.join(homedir(), '.dsh');
 const ARCHIVE_DIR = path.join(HOME, 'storages', 'dsh-save-load', 'archives');
+const saveJobs = new Map();
 
 const SYSTEM_PROMPT = `You are a senior engineer writing a handoff manual for a new agent that will take over this work in a fresh session.
 
@@ -78,7 +79,7 @@ export function apply(ctx) {
           path: SAVE_PATH,
           methods: ['POST'],
           requestBody: 'buffered',
-          fetch: (request) => route(request, () => saveArchive(ctx, request)),
+          fetch: (request) => route(request, async () => json(200, await saveArchive(ctx, request))),
         }),
         ctx.connection.fetch.register({
           path: LOAD_PATH,
@@ -132,15 +133,26 @@ async function listArchives() {
       // A corrupt archive is skipped; it must not make the picker unusable.
     }
   }
-  archives.sort((left, right) => right.createdAt - left.createdAt);
-  return json(200, { archives: archives.slice(0, MAX_ARCHIVES) });
+  const bySource = new Map();
+  for (const archive of archives) {
+    const key = archive.sourceSessionId === '' ? `archive:${archive.id}` : archive.sourceSessionId;
+    const previous = bySource.get(key);
+    if (previous === undefined || archive.createdAt > previous.createdAt) bySource.set(key, archive);
+  }
+  const deduped = [...bySource.values()];
+  deduped.sort((left, right) => right.createdAt - left.createdAt);
+  return json(200, { archives: deduped.slice(0, MAX_ARCHIVES) });
 }
 
 /**
- * Summarize the live Session and write one archive.
+ * Summarize the live Session and write or update one archive.
+ *
+ * The same Session is single-flight: concurrent calls share one job, and a
+ * repeated save with no new Session events returns the existing archive. A
+ * save after new events updates that archive instead of creating a duplicate.
  * @param ctx - Host context.
  * @param request - authenticated Fetch request with `{ sessionId }`.
- * @returns `{ archive }`.
+ * @returns `{ archive, reused, updated }`.
  */
 async function saveArchive(ctx, request) {
   const payload = await body(request);
@@ -148,30 +160,48 @@ async function saveArchive(ctx, request) {
   if (sessionId === '') throw httpError(400, 'sessionId is required');
   const session = ctx.sessions.get(sessionId);
   if (session === undefined) throw httpError(404, 'this session is not live in the Host');
+
+  const key = String(sessionId);
+  const pending = saveJobs.get(key);
+  if (pending !== undefined) return pending;
+  const job = performSave(ctx, session).finally(() => {
+    if (saveJobs.get(key) === job) saveJobs.delete(key);
+  });
+  saveJobs.set(key, job);
+  return job;
+}
+
+/**
+ * Perform one archive write for a Session.
+ * @param ctx - Host context.
+ * @param session - live Session.
+ * @returns `{ archive, reused, updated }`.
+ */
+async function performSave(ctx, session) {
+  const sessionId = String(session.id);
+  const sourceLastSeq = Number(session.seq ?? 0);
+  const existing = await findArchiveForSession(sessionId);
+  if (existing !== undefined && existing.sourceLastSeq === sourceLastSeq) {
+    return { archive: publicArchive(existing), reused: true, updated: false };
+  }
+
   const transcript = buildTranscript(session);
   if (transcript.trim() === '') throw httpError(422, 'this session has no transcript to archive');
-
   const llm = ctx.get('llm');
   if (llm === undefined) throw httpError(503, 'the llm service is not mounted in this profile');
   const model = resolveModel(ctx, session);
   if (model === undefined) throw httpError(503, 'no model is configured for this session');
 
-  const abort = new AbortController();
-  if (request.signal instanceof AbortSignal) {
-    if (request.signal.aborted) abort.abort();
-    else request.signal.addEventListener('abort', () => abort.abort(), { once: true });
-  }
-
-  const manual = await summarize(llm, model, session, transcript, abort.signal);
+  const manual = await summarize(llm, model, session, transcript);
   const createdAt = Date.now();
-  const id = `handoff-${createdAt.toString(36)}-${randomBytes(3).toString('hex')}`;
   const sourceTitle = sessionTitle(session);
   const record = {
     version: 1,
-    id,
+    id: existing?.id ?? `handoff-${createdAt.toString(36)}-${randomBytes(3).toString('hex')}`,
     title: titleFromManual(manual, sourceTitle),
     createdAt,
     sourceSessionId: sessionId,
+    sourceLastSeq,
     sourceTitle,
     cwd: typeof session.header?.cwd === 'string' ? session.header.cwd : '',
     model: `${model.provider}/${model.model}`,
@@ -179,11 +209,38 @@ async function saveArchive(ctx, request) {
   };
 
   await mkdir(ARCHIVE_DIR, { recursive: true });
-  const target = path.join(ARCHIVE_DIR, `${id}.json`);
+  const target = path.join(ARCHIVE_DIR, `${record.id}.json`);
   const temporary = `${target}.${randomBytes(4).toString('hex')}.tmp`;
   await writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
   await rename(temporary, target);
-  return json(200, { archive: publicArchive(record) });
+  return { archive: publicArchive(record), reused: false, updated: existing !== undefined };
+}
+
+/**
+ * Find the newest archive for one source Session.
+ * @param sessionId - source Session id.
+ * @returns the latest record, or undefined.
+ */
+async function findArchiveForSession(sessionId) {
+  let names;
+  try {
+    names = await readdir(ARCHIVE_DIR);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined;
+    throw error;
+  }
+  let latest;
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    try {
+      const record = await readArchive(name.slice(0, -5));
+      if (record.sourceSessionId !== sessionId) continue;
+      if (latest === undefined || record.createdAt > latest.createdAt) latest = record;
+    } catch {
+      // Ignore a corrupt file while locating the newest valid archive.
+    }
+  }
+  return latest;
 }
 
 /**
@@ -289,10 +346,9 @@ function blocksToText(content) {
  * @param model - provider/model pair.
  * @param session - source Session.
  * @param transcript - bounded transcript.
- * @param signal - cancellation.
  * @returns the manual text.
  */
-async function summarize(llm, model, session, transcript, signal) {
+async function summarize(llm, model, session, transcript) {
   const cwd = typeof session.header?.cwd === 'string' ? session.header.cwd : 'unknown';
   const userText = `Session: ${session.id}
 Working directory: ${cwd}
@@ -315,7 +371,6 @@ Write the handoff manual now.`;
       messages: [{ role: 'user', content: [{ type: 'text', text: userText }] }],
       temperature: 0.2,
       maxTokens: MAX_MANUAL_TOKENS,
-      signal,
     });
     for await (const chunk of stream) {
       if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
@@ -328,10 +383,8 @@ Write the handoff manual now.`;
       else if (reason.kind === 'aborted') failure = 'the model request was aborted';
     }
   } catch (error) {
-    if (signal.aborted) throw httpError(499, 'archive cancelled');
     throw httpError(502, error instanceof Error ? error.message : 'the model request failed');
   }
-  if (signal.aborted) throw httpError(499, 'archive cancelled');
   if (failure !== '') throw httpError(502, failure);
   if (manual.trim() === '') throw httpError(502, 'the model returned no handoff text');
   return manual.trim();
