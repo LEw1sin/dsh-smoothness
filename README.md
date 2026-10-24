@@ -56,7 +56,7 @@ See [dsh-btw/README.md](dsh-btw/README.md) for details and limits.
 ## dsh-assets — Assets
 
 - Tabs for **Plugins**, **Skills**, and **Rules** with one-sentence summaries.
-- DSH's built-in agent presets, plugins, skills, and rules are collected under one collapsible **DSH presets** folder; clicking it reveals what ships with DeepSeek Harness. It starts collapsed and sits after your own assets.
+- DSH-provided assets stay separate from yours: built-in agent presets and bundles sit in the Plugins tab's **DSH presets** folder, all DSH-provided skills form one **DSH presets** skill pack in Skills, and DSH-managed rules sit in the Rules tab folder. They start collapsed and sit after your own assets.
 - Your own projects are discovered dynamically from the installed skills: explicit `metadata.homepage` / `repository` / `project` / `version` frontmatter, a repository URL matching a skill's prefix, a non-generic prefix shared by at least two skills, or cross-skill `../<skill>` references. No project list is compiled into the plugin, so a new project install appears after the catalog refreshes; versions and types appear only when the project declares them in metadata.
 - Both the discovered project skill packs and one **DSH presets** skill pack appear under **Skill packs**. The DSH pack contains every skill not owned by a project, enabled or not. The Plugins tab shows a compact preview of your project packs plus the DSH presets/plugins folder.
 - Skills are grouped by owning plugin, by `../skill` references, or by shared name prefix; a plugin-like collection such as HyperFrames becomes one card with its bundled skills on hover.
