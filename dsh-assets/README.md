@@ -8,17 +8,11 @@ Session.
 
 ## What it shows
 
-- **Plugins** — the bundles installed in this profile, with their version and a
-  one-sentence description. DSH's built-in agent presets and bundles are
-  collapsed under one **DSH presets** folder; user presets and plugins are
-  listed directly. A plugin that ships skills shows them on hover (click to
-  expand).
-- **Skills** — the skills visible to this Session, including preset-scoped
-  user skills (Moli, Agent Reach, and similar), grouped under the project or
-  skill pack that owns them. DSH-shipped project skills (for example
-  `agent-experience`) and bundled skills form one **DSH presets** skill pack;
-  your project packs are listed directly under **Skill packs**. Hovering a
-  group lists its skills; each skill has its own switch and enabled state.
+- **Skills** — two sections. **用户技能包** holds user projects discovered from
+  their skills (Agent Reach, Moli, HyperFrames, IndexTTS, and future installs);
+  **DSH预设** holds every other skill. Both list all skills whether or not the
+  current Session enables them. Hovering a pack lists its skills; each skill
+  has its own switch and state.
 - **Rules** — `AGENTS.md` / `CLAUDE.md`, `RULE.md`, and `.dsh/rules`,
   `.agents/rules`, `.cursor/rules` files. `AGENTS.md` / `CLAUDE.md` are owned by
   DSH's workspace-instructions layer and shown read-only; extra rule files are
@@ -50,7 +44,7 @@ installed globally.
 
 ## Grouping
 
-User-installed projects are discovered from skill provenance: frontmatter `metadata.homepage` / `repository` / `project` / `version`, a repository URL that matches a skill prefix, a non-generic prefix shared by at least two skills, and cross-skill `../<skill>/` references. No project list is compiled into the plugin. A project version or type is shown only when the project declares it in metadata. Their skills form project skill packs; **every other skill is DSH-provided** and forms one **DSH presets** skill pack, enabled or not. The Skills tab lists all of these packs under **Skill packs**; the Plugins tab shows a compact preview of your projects. Within the DSH pack, skills keep their individual switches.
+User-installed projects are discovered from skill provenance: frontmatter `metadata.homepage` / `repository` / `project` / `version`, a repository URL that matches a skill prefix, a non-generic prefix shared by at least two skills, and cross-skill `../<skill>/` references. No project list is compiled into the plugin. A project version or type is shown only when the project declares it in metadata. Their skills form project skill packs; **every other skill is DSH-provided** and forms one **DSH presets** skill pack, enabled or not. The Skills tab lists the user packs under **用户技能包** and the DSH pack under **DSH预设**. Within each pack, skills keep their individual switches.
 
 1. A skill whose provider or file path names an installed plugin.
 2. A skill whose name or description matches the plugin's brand.

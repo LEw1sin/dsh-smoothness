@@ -58,10 +58,12 @@ window.__ModuleLoader__.load({
       'project.kind.plugin': '插件包 + CLI',
       'folder.dsh': 'DSH 预设',
       'folder.hint': 'DSH 内置预设、插件、技能与规则',
-      'dshPack.title': 'DSH预设',
+      'dshPack.title': 'DSH 自带技能',
       'dshPack.summary': 'DeepSeek Harness 自带的技能，无论当前是否启用。',
       'section.myProjects': '我的项目',
       'section.packs': '技能包',
+      'section.userPacks': '用户技能包',
+      'section.dshPresets': 'DSH预设',
       'section.myPresets': '我的预设',
       'section.presets': '内置预设',
       'section.myPlugins': '我的插件',
@@ -133,10 +135,12 @@ window.__ModuleLoader__.load({
       'project.kind.plugin': 'Plugin + CLI',
       'folder.dsh': 'DSH presets',
       'folder.hint': 'Presets, plugins, skills, and rules shipped with DSH',
-      'dshPack.title': 'DSH presets',
+      'dshPack.title': 'Skills provided by DSH',
       'dshPack.summary': 'Skills shipped with DeepSeek Harness, enabled or not.',
       'section.myProjects': 'My projects',
       'section.packs': 'Skill packs',
+      'section.userPacks': 'Your skill packs',
+      'section.dshPresets': 'DSH presets',
       'section.myPresets': 'My presets',
       'section.presets': 'Built-in presets',
       'section.myPlugins': 'My plugins',
@@ -544,7 +548,7 @@ window.__ModuleLoader__.load({
       let state = {
         open: false,
         sessionId: null,
-        tab: 'plugins',
+        tab: 'skills',
         query: '',
         data: null,
         loading: false,
@@ -634,7 +638,7 @@ window.__ModuleLoader__.load({
             set({ open: false });
             return;
           }
-          set({ open: true, sessionId: key, tab: state.tab ?? 'plugins' });
+          set({ open: true, sessionId: key, tab: state.tab ?? 'skills' });
           void load(key);
         },
         close() {
@@ -926,7 +930,8 @@ window.__ModuleLoader__.load({
         children: pack.skillIds.map((id) => skillById.get(id)).filter(Boolean),
         pending: state.pending[`pack:${pack.id}`] === true,
       }));
-      const allPacks = [...projectGroups, ...packGroups];
+      const userPacks = projectGroups;
+      const dshPacks = packGroups;
       const dshPlugins = plugins.filter((plugin) => plugin.core === true);
       const userPlugins = plugins.filter((plugin) => plugin.core !== true);
       const dshRules = rules.filter((rule) => rule.readOnly === true || rule.managedBy === 'dsh');
@@ -951,11 +956,9 @@ window.__ModuleLoader__.load({
                   tr(t, 'panel.errorRetry'),
                 ),
               )
-            : state.tab === 'plugins'
-              ? renderPluginsTab(t, { userPresets, dshPresets, projectGroups, userPlugins, dshPlugins, state, skillById, collapsed, toggleCollapsed })
-              : state.tab === 'skills'
-                ? renderSkillsTab(t, { allPacks, state, collapsed, toggleCollapsed })
-                : renderRulesTab(t, { userRules, dshRules, state, collapsed, toggleCollapsed });
+            : state.tab === 'rules'
+              ? renderRulesTab(t, { userRules, dshRules, state, collapsed, toggleCollapsed })
+              : renderSkillsTab(t, { userPacks, dshPacks, state, collapsed, toggleCollapsed });
 
       const allEnabled =
         data.counts.enabledSkills === data.counts.skills &&
@@ -1027,7 +1030,6 @@ window.__ModuleLoader__.load({
           h(
             'nav',
             { className: 'dshast-tabs', role: 'tablist' },
-            tab(t, state, 'plugins', data.counts.plugins),
             tab(t, state, 'skills', data.counts.skills),
             tab(t, state, 'rules', data.counts.rules),
           ),
@@ -1222,12 +1224,17 @@ window.__ModuleLoader__.load({
     }
 
     function renderSkillsTab(t, options) {
-      const { allPacks, state, collapsed, toggleCollapsed } = options;
-      if (allPacks.length === 0) return emptyState(t);
-      return [
-        sectionTitle(t, 'section.packs'),
-        ...skillGroupNodes(t, allPacks, collapsed, toggleCollapsed, state),
-      ];
+      const { userPacks, dshPacks, state, collapsed, toggleCollapsed } = options;
+      const nodes = [];
+      if (userPacks.length > 0) {
+        nodes.push(sectionTitle(t, 'section.userPacks'));
+        nodes.push(...skillGroupNodes(t, userPacks, collapsed, toggleCollapsed, state));
+      }
+      if (dshPacks.length > 0) {
+        nodes.push(sectionTitle(t, 'section.dshPresets'));
+        nodes.push(...skillGroupNodes(t, dshPacks, collapsed, toggleCollapsed, state));
+      }
+      return nodes.length === 0 ? emptyState(t) : nodes;
     }
 
     function renderRulesTab(t, options) {

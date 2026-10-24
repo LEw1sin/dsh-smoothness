@@ -55,12 +55,10 @@ See [dsh-btw/README.md](dsh-btw/README.md) for details and limits.
 
 ## dsh-assets — Assets
 
-- Tabs for **Plugins**, **Skills**, and **Rules** with one-sentence summaries.
-- DSH-provided assets stay separate from yours: built-in agent presets and bundles sit in the Plugins tab's **DSH presets** folder, all DSH-provided skills form one **DSH presets** skill pack in Skills, and DSH-managed rules sit in the Rules tab folder. They start collapsed and sit after your own assets.
+- Two tabs: **Skills** and **Rules**. DSH already has its own plugin inventory, so Assets does not duplicate plugin rows.
+- **Skills** has two sections: **用户技能包** (dynamically discovered user projects such as Agent Reach, Moli, HyperFrames, and IndexTTS) and **DSH预设** (every other skill). Both sections list skills whether or not this Session has them enabled, and each skill shows its current state.
 - Your own projects are discovered dynamically from the installed skills: explicit `metadata.homepage` / `repository` / `project` / `version` frontmatter, a repository URL matching a skill's prefix, a non-generic prefix shared by at least two skills, or cross-skill `../<skill>` references. No project list is compiled into the plugin, so a new project install appears after the catalog refreshes; versions and types appear only when the project declares them in metadata.
-- Both the discovered project skill packs and one **DSH presets** skill pack appear under **Skill packs**. The DSH pack contains every skill not owned by a project, enabled or not. The Plugins tab shows a compact preview of your project packs plus the DSH presets/plugins folder.
-- Skills are grouped by owning plugin, by `../skill` references, or by shared name prefix; a plugin-like collection such as HyperFrames becomes one card with its bundled skills on hover.
-- Every row has a session-scoped switch. Disabled skills disappear from that Session's model catalog; disabled rule files stop being injected into its system-prompt context; disabling a plugin disables its attributed skills.
+- Every skill row has a session-scoped switch. Disabled skills disappear from that Session's model catalog; disabled rule files stop being injected into its system-prompt context.
 - `AGENTS.md` / `CLAUDE.md` are shown as DSH-managed and read-only, so they are never double-injected.
 - Per-Session state lives under `$DSH_HOME/storages/dsh-assets/state.json`; it is policy, not profile configuration.
 
