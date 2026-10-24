@@ -14,6 +14,9 @@ window.__ModuleLoader__.load({
     const NS = 'dsh-assets';
     const LIST_PATH = 'api/dsh-assets.list';
     const TOGGLE_PATH = 'api/dsh-assets.toggle';
+    const UPDATE_PATH = 'api/dsh-assets.update';
+    const RESOLVE_PATH = 'api/dsh-assets.resolve';
+    const CHANGELOG_PATH = 'api/dsh-assets.changelog';
 
     const zh = {
       'launcher.label': '资产',
@@ -63,6 +66,27 @@ window.__ModuleLoader__.load({
       'section.myProjects': '我的项目',
       'section.packs': '技能包',
       'section.userPacks': '用户技能包',
+      'skills.update': '更新',
+      'skills.updateLog': '更新日志',
+      'skills.updateTitle': '更新技能包',
+      'skills.updateRunning': '正在检查并更新，请稍候…',
+      'skills.logTitle': '更新日志',
+      'skills.logEmpty': '还没有更新记录。',
+      'skills.close': '关闭',
+      'skills.upToDate': '已是最新',
+      'skills.updated': '已更新',
+      'skills.conflict': '需要处理冲突',
+      'skills.noSource': '无更新来源',
+      'skills.error': '更新失败',
+      'skills.keptLocal': '已保留本地',
+      'skills.tookRemote': '已采用远端',
+      'skills.stashed': '已暂存并更新',
+      'skills.dirty': '有本地修改',
+      'skills.diverged': '与远端分叉',
+      'skills.changes': '变更',
+      'skills.keepLocal': '保留本地修改',
+      'skills.takeRemote': '采用官方远端',
+      'skills.stashUpdate': '暂存本地后更新',
       'section.dshPresets': 'DSH预设',
       'section.myPresets': '我的预设',
       'section.presets': '内置预设',
@@ -140,6 +164,27 @@ window.__ModuleLoader__.load({
       'section.myProjects': 'My projects',
       'section.packs': 'Skill packs',
       'section.userPacks': 'Your skill packs',
+      'skills.update': 'Update',
+      'skills.updateLog': 'Update log',
+      'skills.updateTitle': 'Update skill packs',
+      'skills.updateRunning': 'Checking and updating, please wait…',
+      'skills.logTitle': 'Update log',
+      'skills.logEmpty': 'No updates recorded yet.',
+      'skills.close': 'Close',
+      'skills.upToDate': 'Up to date',
+      'skills.updated': 'Updated',
+      'skills.conflict': 'Needs conflict handling',
+      'skills.noSource': 'No update source',
+      'skills.error': 'Update failed',
+      'skills.keptLocal': 'Kept local',
+      'skills.tookRemote': 'Took remote',
+      'skills.stashed': 'Stashed and updated',
+      'skills.dirty': 'Local changes',
+      'skills.diverged': 'Diverged from remote',
+      'skills.changes': 'Changes',
+      'skills.keepLocal': 'Keep local changes',
+      'skills.takeRemote': 'Take official remote',
+      'skills.stashUpdate': 'Stash local, then update',
       'section.dshPresets': 'DSH presets',
       'section.myPresets': 'My presets',
       'section.presets': 'Built-in presets',
@@ -208,6 +253,7 @@ window.__ModuleLoader__.load({
 .dshast-modal {
   width: min(840px, calc(100vw - 48px));
   height: min(760px, calc(100vh - 56px));
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -527,6 +573,75 @@ window.__ModuleLoader__.load({
 .dshast-allbtn:disabled { opacity: 0.45; cursor: default; }
 .dshast-error { padding: 4px 14px 8px; color: var(--dsw-alias-state-error-primary); font-size: 10.5px; }
 .dshast-loading { padding: 40px; color: var(--dsw-alias-label-secondary); text-align: center; font-size: 12px; }
+.dshast-section-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dshast-section-label { color: var(--dsw-alias-label-secondary); font-size: 10.5px; font-weight: 600; }
+.dshast-section-actions { display: flex; align-items: center; gap: 6px; }
+.dshast-mini {
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 10.5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.dshast-mini:hover:not(:disabled) { border-color: var(--dsw-alias-border-l2); }
+.dshast-mini:disabled { opacity: 0.5; cursor: default; }
+.dshast-update-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-base) 55%, transparent);
+}
+.dshast-update-dialog {
+  width: min(460px, 100%);
+  max-height: min(72vh, 640px);
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  box-shadow: 0 18px 48px color-mix(in srgb, var(--dsw-alias-bg-base) 55%, transparent);
+}
+.dshast-update-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dshast-update-title { font-size: 13px; font-weight: 600; }
+.dshast-update-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.dshast-update-close:hover { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.dshast-update-loading { color: var(--dsw-alias-label-secondary); font-size: 12px; padding: 14px 0; }
+.dshast-update-empty { color: var(--dsw-alias-label-secondary); font-size: 12px; padding: 14px 0; }
+.dshast-update-body { display: grid; gap: 8px; }
+.dshast-update-row {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 10px;
+}
+.dshast-update-row[data-state='conflict'] { border-color: var(--dsw-alias-state-warn-primary); }
+.dshast-update-row[data-state='error'] { border-color: var(--dsw-alias-state-error-primary); }
+.dshast-update-row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dshast-update-skill { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.dshast-update-state { flex: none; font-size: 10.5px; color: var(--dsw-alias-label-secondary); }
+.dshast-update-detail { font-size: 11px; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+.dshast-update-changes { margin: 0; padding-left: 16px; display: grid; gap: 2px; font-size: 11px; color: var(--dsw-alias-label-secondary); }
+.dshast-update-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 `;
 
     const EMPTY_DATA = Object.freeze({
@@ -555,6 +670,7 @@ window.__ModuleLoader__.load({
         error: null,
         pending: {},
         loadedAt: 0,
+        update: null,
       };
       const listeners = new Set();
       let requestSeq = 0;
@@ -654,6 +770,76 @@ window.__ModuleLoader__.load({
         setTab(tab) {
           if (state.tab === tab) return;
           set({ tab });
+        },
+        updateAll() {
+          const sessionId = state.sessionId;
+          if (sessionId === null || sessionId === '') return;
+          set({ update: { kind: 'run', loading: true, results: [], entries: [], error: null, pendingSkill: null } });
+          void (async () => {
+            try {
+              const response = await fetch(UPDATE_PATH, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ sessionId, locale: getLocale() }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              const data = await response.json();
+              if (disposed) return;
+              set({ update: { kind: 'run', loading: false, results: Array.isArray(data?.results) ? data.results : [], entries: [], error: null, pendingSkill: null } });
+            } catch (error) {
+              if (disposed) return;
+              set({ update: { kind: 'run', loading: false, results: [], entries: [], error: messageOf(error), pendingSkill: null } });
+            }
+          })();
+        },
+        resolveConflict(skill, choice) {
+          const sessionId = state.sessionId;
+          if (sessionId === null || sessionId === '' || state.update === null || state.update.kind !== 'run') return;
+          const current = state.update;
+          set({ update: { ...current, pendingSkill: skill } });
+          void (async () => {
+            try {
+              const response = await fetch(RESOLVE_PATH, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ sessionId, skill, choice, locale: getLocale() }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              const data = await response.json();
+              if (disposed || state.update === null) return;
+              const base = state.update;
+              const results = (base.results ?? []).map((entry) => (entry.skill === skill ? data.result : entry));
+              set({ update: { ...base, results, pendingSkill: null, error: null } });
+            } catch (error) {
+              if (disposed || state.update === null) return;
+              set({ update: { ...state.update, pendingSkill: null, error: messageOf(error) } });
+            }
+          })();
+        },
+        openUpdateLog() {
+          set({ update: { kind: 'log', loading: true, results: [], entries: [], error: null, pendingSkill: null } });
+          void (async () => {
+            try {
+              const response = await fetch(CHANGELOG_PATH, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ locale: getLocale() }),
+              });
+              if (!response.ok) throw new Error(await readError(response));
+              const data = await response.json();
+              if (disposed) return;
+              set({ update: { kind: 'log', loading: false, results: [], entries: Array.isArray(data?.entries) ? data.entries : [], error: null, pendingSkill: null } });
+            } catch (error) {
+              if (disposed) return;
+              set({ update: { kind: 'log', loading: false, results: [], entries: [], error: messageOf(error), pendingSkill: null } });
+            }
+          })();
+        },
+        closeUpdate() {
+          set({ update: null });
         },
         setQuery(query) {
           if (state.query === query) return;
@@ -1079,6 +1265,7 @@ window.__ModuleLoader__.load({
             ),
             h('span', { className: 'dshast-hint' }, tr(t, 'panel.hint')),
           ),
+          state.update !== null ? h(UpdateDialog, { t }) : null,
         ),
       );
     }
@@ -1101,6 +1288,161 @@ window.__ModuleLoader__.load({
 
     function sectionTitle(t, key) {
       return h('div', { className: 'dshast-section' }, tr(t, key));
+    }
+
+    function userPackHeader(t) {
+      const state = useStore();
+      const running = state.update !== null && state.update.kind === 'run' && state.update.loading === true;
+      return h(
+        'div',
+        { className: 'dshast-section dshast-section-row' },
+        h('span', { className: 'dshast-section-label' }, tr(t, 'section.userPacks')),
+        h(
+          'div',
+          { className: 'dshast-section-actions' },
+          h(
+            'button',
+            { type: 'button', className: 'dshast-mini', disabled: running, onClick: () => store.updateAll() },
+            tr(t, 'skills.update'),
+          ),
+          h(
+            'button',
+            { type: 'button', className: 'dshast-mini', onClick: () => store.openUpdateLog() },
+            tr(t, 'skills.updateLog'),
+          ),
+        ),
+      );
+    }
+
+    function actionLabel(t, action) {
+      switch (action) {
+        case 'updated': return tr(t, 'skills.updated');
+        case 'took-remote': return tr(t, 'skills.tookRemote');
+        case 'kept-local': return tr(t, 'skills.keptLocal');
+        case 'stashed': return tr(t, 'skills.stashed');
+        case 'up-to-date': return tr(t, 'skills.upToDate');
+        default: return action ?? '';
+      }
+    }
+
+    function updateRow(t, row, pendingSkill) {
+      const stateLabel = {
+        'up-to-date': tr(t, 'skills.upToDate'),
+        updated: tr(t, 'skills.updated'),
+        conflict: tr(t, 'skills.conflict'),
+        'no-source': tr(t, 'skills.noSource'),
+        error: tr(t, 'skills.error'),
+        'kept-local': tr(t, 'skills.keptLocal'),
+        'took-remote': tr(t, 'skills.tookRemote'),
+        stashed: tr(t, 'skills.stashed'),
+      }[row.state] ?? String(row.state ?? '');
+      const detailBits = [];
+      if (typeof row.local === 'string' && row.local !== '' && typeof row.remote === 'string' && row.remote !== '') {
+        detailBits.push(`${row.local} → ${row.remote}`);
+      }
+      if (row.dirty === true) detailBits.push(tr(t, 'skills.dirty'));
+      if (row.diverged === true) detailBits.push(tr(t, 'skills.diverged'));
+      if (typeof row.message === 'string' && row.message !== '') detailBits.push(row.message);
+      const pending = pendingSkill === row.skill;
+      const conflict = row.state === 'conflict';
+      return h(
+        'div',
+        { className: 'dshast-update-row', 'data-state': row.state },
+        h(
+          'div',
+          { className: 'dshast-update-row-head' },
+          h('span', { className: 'dshast-update-skill' }, row.skill),
+          h('span', { className: 'dshast-update-state' }, pending ? `${tr(t, 'skills.updateRunning')}…` : stateLabel),
+        ),
+        detailBits.length > 0 ? h('div', { className: 'dshast-update-detail' }, detailBits.join(' · ')) : null,
+        Array.isArray(row.changes) && row.changes.length > 0
+          ? h('ul', { className: 'dshast-update-changes' }, row.changes.slice(0, 5).map((change) => h('li', { key: String(change) }, String(change))))
+          : null,
+        conflict
+          ? h(
+              'div',
+              { className: 'dshast-update-actions' },
+              h('button', { type: 'button', className: 'dshast-mini', disabled: pending, onClick: () => store.resolveConflict(row.skill, 'keep-local') }, tr(t, 'skills.keepLocal')),
+              h('button', { type: 'button', className: 'dshast-mini', disabled: pending, onClick: () => store.resolveConflict(row.skill, 'take-remote') }, tr(t, 'skills.takeRemote')),
+              row.cloneMode === true ? null : h('button', { type: 'button', className: 'dshast-mini', disabled: pending, onClick: () => store.resolveConflict(row.skill, 'stash') }, tr(t, 'skills.stashUpdate')),
+            )
+          : null,
+      );
+    }
+
+    function logRow(t, entry) {
+      const when = typeof entry.time === 'number' && entry.time > 0 ? new Date(entry.time).toLocaleString() : '';
+      const head = [typeof entry.skill === 'string' ? entry.skill : '', when].filter((part) => part !== '').join(' · ');
+      return h(
+        'div',
+        { className: 'dshast-update-row' },
+        h(
+          'div',
+          { className: 'dshast-update-row-head' },
+          h('span', { className: 'dshast-update-skill' }, head),
+          h('span', { className: 'dshast-update-state' }, actionLabel(t, entry.action)),
+        ),
+        Array.isArray(entry.changes) && entry.changes.length > 0
+          ? h('ul', { className: 'dshast-update-changes' }, entry.changes.slice(0, 5).map((change) => h('li', { key: String(change) }, String(change))))
+          : null,
+      );
+    }
+
+    function UpdateDialog({ t }) {
+      const state = useStore();
+      const update = state.update;
+      if (update === null) return null;
+      const isRun = update.kind === 'run';
+      const title = isRun ? tr(t, 'skills.updateTitle') : tr(t, 'skills.logTitle');
+      return h(
+        'div',
+        {
+          className: 'dshast-update-backdrop',
+          role: 'presentation',
+          onClick: (event) => {
+            if (event.target === event.currentTarget) store.closeUpdate();
+          },
+        },
+        h(
+          'section',
+          {
+            className: 'dshast-update-dialog',
+            role: 'dialog',
+            'aria-modal': 'true',
+            'aria-label': title,
+            onClick: (event) => event.stopPropagation(),
+          },
+          h(
+            'header',
+            { className: 'dshast-update-head' },
+            h('div', { className: 'dshast-update-title' }, title),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dshast-update-close',
+                title: tr(t, 'skills.close'),
+                'aria-label': tr(t, 'skills.close'),
+                onClick: () => store.closeUpdate(),
+              },
+              '×',
+            ),
+          ),
+          update.loading === true
+            ? h('div', { className: 'dshast-update-loading' }, tr(t, 'skills.updateRunning'))
+            : update.error !== null && update.error !== ''
+              ? h('div', { className: 'dshast-error' }, update.error)
+              : isRun
+                ? h('div', { className: 'dshast-update-body' }, update.results.map((row) => updateRow(t, row, update.pendingSkill)))
+                : h(
+                    'div',
+                    { className: 'dshast-update-body' },
+                    update.entries.length === 0
+                      ? h('div', { className: 'dshast-update-empty' }, tr(t, 'skills.logEmpty'))
+                      : update.entries.map((entry) => logRow(t, entry)),
+                  ),
+        ),
+      );
     }
 
     function pluginRow(t, plugin, state, skillById) {
@@ -1227,7 +1569,7 @@ window.__ModuleLoader__.load({
       const { userPacks, dshPacks, state, collapsed, toggleCollapsed } = options;
       const nodes = [];
       if (userPacks.length > 0) {
-        nodes.push(sectionTitle(t, 'section.userPacks'));
+        nodes.push(userPackHeader(t));
         nodes.push(...skillGroupNodes(t, userPacks, collapsed, toggleCollapsed, state));
       }
       if (dshPacks.length > 0) {

@@ -1,6 +1,6 @@
 {
   "name": "@lew1sin/dsh-assets",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "type": "module",
   "description": "Assets: a session-scoped browser for installed skills and rules with one-line summaries.",
   "license": "MIT",

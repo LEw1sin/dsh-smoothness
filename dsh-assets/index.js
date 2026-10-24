@@ -8,12 +8,20 @@
  * injected as per-request system-prompt context.
  */
 
+import { execFile as execFileCb } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { promisify } from 'node:util';
 
 const LIST_PATH = '/api/dsh-assets.list';
 const TOGGLE_PATH = '/api/dsh-assets.toggle';
+const UPDATE_PATH = '/api/dsh-assets.update';
+const RESOLVE_PATH = '/api/dsh-assets.resolve';
+const CHANGELOG_PATH = '/api/dsh-assets.changelog';
+const MAX_LOG_ENTRIES = 200;
+const GIT_TIMEOUT_MS = 60_000;
+const GIT_FETCH_TIMEOUT_MS = 180_000;
 const INDEX_TTL_MS = 30_000;
 const MAX_SKILL_BYTES = 131_072;
 const MAX_RULE_BYTES = 65_536;
@@ -22,6 +30,34 @@ const MAX_RULE_FILES = 100;
 const MAX_STATE_SESSIONS = 200;
 const STATE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PROVIDER_NAME = 'dsh-assets-session-filter';
+
+/**
+ * Bundled `find-skills` skill (from vercel-labs/skills). It is declared so the
+ * catalog lists it, and the update flow reuses its matching rules to resolve an
+ * official GitHub repository for locally installed skills that declare no
+ * origin of their own.
+ */
+const FIND_SKILLS_BODY = `# Find Skills
+
+Find the official GitHub repository that publishes an agent skill.
+
+1. Search GitHub repositories with the skill name tokens and the skill's domain:
+   \`api.github.com/search/repositories?q=<name tokens> in:name,description\`, sorted by stars.
+2. Score candidates: the repository name should contain the skill name (hyphens,
+   spaces, or concatenated); penalize forks. Ignore unrelated tutorial or
+   awesome-list repositories.
+3. Prefer the most-starred repository whose name matches; when nothing matches
+   the name, report no match instead of guessing.
+4. Report the exact \`https://github.com/<owner>/<repo>\` URL and the match reason.
+5. Never install, clone, or modify anything without the user's approval.`;
+const FIND_SKILLS_SKILL = {
+  name: 'find-skills',
+  description: 'Find the official GitHub repository that publishes an agent skill matching a name or description. Use when a locally installed skill needs an update source, or when the user asks to find a skill for a task.',
+  whenToUse: 'A locally installed skill has no declared origin and needs updates, or the user wants to discover skills on GitHub.',
+  content: FIND_SKILLS_BODY,
+  source: 'runtime',
+  invocation: { modelInvocable: true, userInvocable: true },
+};
 
 const GENERIC_STEMS = new Set([
   'add', 'agent', 'asset', 'auto', 'chat', 'code', 'create', 'dsh', 'edit', 'find',
@@ -78,12 +114,57 @@ export function apply(ctx) {
 
   ctx.effect(
     () =>
+      ctx.connection.fetch.register({
+        path: UPDATE_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: (request) => runtime.handleUpdate(request),
+      }),
+    'dsh-assets: update route',
+  );
+
+  ctx.effect(
+    () =>
+      ctx.connection.fetch.register({
+        path: RESOLVE_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: (request) => runtime.handleResolve(request),
+      }),
+    'dsh-assets: resolve route',
+  );
+
+  ctx.effect(
+    () =>
+      ctx.connection.fetch.register({
+        path: CHANGELOG_PATH,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: (request) => runtime.handleChangelog(request),
+      }),
+    'dsh-assets: changelog route',
+  );
+
+  ctx.effect(
+    () =>
       ctx.systemPrompt.context({
         name: 'dsh-assets.rules',
         order: 900,
         text: (assembly) => runtime.rulesText(assembly?.scope),
       }),
     'dsh-assets: rule context',
+  );
+
+  ctx.effect(
+    () => {
+      try {
+        return ctx.skills.register(FIND_SKILLS_SKILL);
+      } catch (error) {
+        ctx.logger?.warn?.(`[dsh-assets] could not register find-skills: ${String(error?.message ?? error)}`);
+        return undefined;
+      }
+    },
+    'dsh-assets: find-skills skill',
   );
 
   ctx.effect(() => {
@@ -156,6 +237,223 @@ export function apply(ctx) {
       runtime.providerDisposers.clear();
     };
   }, 'dsh-assets: per-session filters');
+}
+
+/* -------------------------------------------------------------------------- */
+/* skill updates                                                             */
+/* -------------------------------------------------------------------------- */
+
+const execFileAsync = promisify(execFileCb);
+
+/** Run one git command inside a skill directory. */
+async function gitIn(dir, args, timeoutMs = GIT_TIMEOUT_MS) {
+  try {
+    const { stdout } = await execFileAsync('git', ['-C', dir, ...args], { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 });
+    return { ok: true, out: String(stdout ?? '').trim() };
+  } catch (error) {
+    return { ok: false, out: String(error?.stdout ?? '').trim(), err: String(error?.stderr ?? error?.message ?? 'git failed').trim() };
+  }
+}
+
+/** Run a raw git command with a working directory (clone support). */
+async function gitRaw(args, cwd, timeoutMs = GIT_FETCH_TIMEOUT_MS) {
+  try {
+    const { stdout } = await execFileAsync('git', args, { cwd, timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 });
+    return { ok: true, out: String(stdout ?? '').trim() };
+  } catch (error) {
+    return { ok: false, out: String(error?.stdout ?? '').trim(), err: String(error?.stderr ?? error?.message ?? 'git failed').trim() };
+  }
+}
+
+/** Read the frontmatter origin a skill declares in its SKILL.md. */
+async function readSkillOrigin(dir) {
+  try {
+    const raw = await fs.readFile(path.join(dir, 'SKILL.md'), 'utf8');
+    const frontmatter = parseFrontmatter(raw).data;
+    const metadata = frontmatter.metadata !== null && typeof frontmatter.metadata === 'object' ? frontmatter.metadata : {};
+    const url = String(metadata.homepage ?? metadata.repository ?? metadata.repo ?? '').trim();
+    return { url };
+  } catch {
+    return { url: '' };
+  }
+}
+
+/** Split a git log into short change lines. */
+function splitChanges(value) {
+  const text = String(value ?? '').trim();
+  if (text === '') return [];
+  return text.split('\n').filter((line) => line !== '').slice(0, 20);
+}
+
+/** Shorten a commit id for display. */
+function shortCommit(value) {
+  return String(value ?? '').slice(0, 8);
+}
+
+/** GitHub repository matching for skills that declare no origin. */
+const originCache = new Map();
+
+export async function findSkillOrigin(skillName) {
+  if (originCache.has(skillName)) return originCache.get(skillName);
+  const promise = (async () => {
+    const tokens = String(skillName).toLowerCase().split(/[-_]/).filter((token) => token.length > 1);
+    if (tokens.length === 0) return null;
+    const query = `${tokens.join(' ')} in:name,description`;
+    try {
+      const response = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=8`, {
+        headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-assets' },
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const flat = tokens.join('');
+      let best = null;
+      let bestScore = 0;
+      for (const item of items) {
+        const full = String(item?.full_name ?? '').toLowerCase();
+        const name = String(item?.name ?? '').toLowerCase();
+        const description = String(item?.description ?? '').toLowerCase();
+        let score = 0;
+        if (name === flat || name === tokens.join('-') || name === tokens.join('_')) score += 120;
+        if (full.includes(flat)) score += 80;
+        for (const token of tokens) {
+          if (full.includes(token)) score += 20;
+          if (description.includes(token)) score += 8;
+        }
+        if (item?.fork === true) score -= 40;
+        if (score > bestScore) {
+          bestScore = score;
+          best = item;
+        }
+      }
+      if (best === null) return null;
+      const name = String(best.name ?? '').toLowerCase();
+      const nameMatches = tokens.every((token) => name.includes(token)) || name === flat;
+      if (!nameMatches || bestScore < 120) return null;
+      return { url: String(best.html_url ?? ''), name: String(best.full_name ?? '') };
+    } catch {
+      return null;
+    }
+  })();
+  originCache.set(skillName, promise);
+  return promise;
+}
+
+/** Inspect one user skill's update state without changing files. */
+export async function inspectSkillUpdate(row) {
+  const dir = row.path;
+  try {
+    const stat = await fs.stat(dir);
+    if (!stat.isDirectory()) return { ...row, state: 'error', message: 'skill directory is missing' };
+  } catch {
+    return { ...row, state: 'error', message: 'skill directory is missing' };
+  }
+  const inGit = await gitIn(dir, ['rev-parse', '--is-inside-work-tree']);
+  if (inGit.ok && inGit.out === 'true') return inspectGitSkill(row);
+  const meta = await readSkillOrigin(dir);
+  if (meta.url !== '') {
+    return { ...row, state: 'conflict', cloneMode: true, source: meta.url, local: 'local', remote: 'remote', dirty: true, diverged: false, changes: [], message: 'local copy without git history; updating replaces it with the official copy' };
+  }
+  const origin = await findSkillOrigin(row.skill);
+  if (origin === null) {
+    return { ...row, state: 'no-source', message: 'no git remote, no metadata.homepage/repository, and find-skills found no match' };
+  }
+  return { ...row, state: 'conflict', cloneMode: true, source: origin.url, local: 'local', remote: 'remote', dirty: true, diverged: false, changes: [], message: `matched via find-skills: ${origin.name}` };
+}
+
+/** Inspect one git-based skill. */
+async function inspectGitSkill(row) {
+  const dir = row.path;
+  const urlResult = await gitIn(dir, ['remote', 'get-url', 'origin']);
+  let source = urlResult.ok ? urlResult.out : (await readSkillOrigin(dir)).url;
+  if (source === '') return { ...row, state: 'no-source', message: 'no git remote and no metadata.homepage/repository' };
+  const fetched = await gitIn(dir, ['fetch', 'origin'], GIT_FETCH_TIMEOUT_MS);
+  if (!fetched.ok) return { ...row, state: 'error', source, message: fetched.err || 'git fetch failed' };
+  const branch = (await gitIn(dir, ['rev-parse', '--abbrev-ref', 'HEAD'])).out;
+  const local = (await gitIn(dir, ['rev-parse', 'HEAD'])).out;
+  const remoteRef = branch === '' || branch === 'HEAD' ? 'FETCH_HEAD' : `refs/remotes/origin/${branch}`;
+  const remote = await gitIn(dir, ['rev-parse', remoteRef]);
+  if (!remote.ok) return { ...row, state: 'error', source, local, message: remote.err || 'remote revision missing' };
+  const status = await gitIn(dir, ['status', '--porcelain']);
+  const dirty = status.out !== '';
+  if (local === remote.out) {
+    return { ...row, state: 'up-to-date', source, local, remote: remote.out, dirty, diverged: false, changes: [] };
+  }
+  const ancestor = await gitIn(dir, ['merge-base', '--is-ancestor', local, remote.out]);
+  const changes = splitChanges((await gitIn(dir, ['log', '--oneline', '--no-merges', `${local}..${remote.out}`])).out);
+  if (dirty || !ancestor.ok) {
+    return { ...row, state: 'conflict', source, local, remote: remote.out, dirty, diverged: !ancestor.ok, changes, message: dirty && !ancestor.ok ? 'local changes and diverged history' : dirty ? 'uncommitted local changes' : 'local and remote history diverged' };
+  }
+  const merged = await gitIn(dir, ['merge', '--ff-only', remote.out]);
+  if (!merged.ok) return { ...row, state: 'conflict', source, local, remote: remote.out, dirty: false, diverged: false, changes, message: merged.err || 'fast-forward merge failed' };
+  return { ...row, state: 'updated', source, local, remote: remote.out, dirty: false, diverged: false, changes };
+}
+
+/** Apply the choice the user made for one conflict. */
+export async function applySkillResolution(row, choice) {
+  if (choice === 'keep-local') return { ...row, state: 'kept-local' };
+  if (row.cloneMode === true) {
+    if (choice === 'take-remote') return cloneReplace(row);
+    return { ...row, state: 'kept-local' };
+  }
+  if (choice === 'take-remote') {
+    const reset = await gitIn(row.path, ['reset', '--hard', row.remote]);
+    if (!reset.ok) return { ...row, state: 'error', message: reset.err };
+    return { ...row, state: 'took-remote' };
+  }
+  if (choice === 'stash') {
+    const stash = await gitIn(row.path, ['stash', 'push', '-u', '-m', `dsh-assets ${Date.now()}`]);
+    const stashed = stash.ok && !stash.out.includes('No local changes');
+    const reset = await gitIn(row.path, ['reset', '--hard', row.remote]);
+    if (!reset.ok) {
+      if (stashed) await gitIn(row.path, ['stash', 'pop']);
+      return { ...row, state: 'error', message: reset.err };
+    }
+    return { ...row, state: 'stashed', stashed };
+  }
+  return { ...row, state: 'error', message: `unknown choice ${choice}` };
+}
+
+/** Replace a non-git skill directory with the official copy, keeping local deps. */
+async function cloneReplace(row) {
+  const temp = `${row.path}.dsh-update-${process.pid}-${Date.now()}`;
+  const clone = await gitRaw(['clone', '--depth', '1', row.source, temp]);
+  if (!clone.ok) return { ...row, state: 'error', message: clone.err };
+  try {
+    await fs.cp(temp, row.path, {
+      recursive: true,
+      force: true,
+      filter: (src) => {
+        const rel = path.relative(temp, src);
+        const top = rel === '' ? '' : rel.split(path.sep)[0];
+        return top !== '.venv' && top !== 'node_modules';
+      },
+    });
+  } catch (error) {
+    await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
+    return { ...row, state: 'error', message: String(error?.message ?? error) };
+  }
+  const commit = (await gitIn(temp, ['rev-parse', 'HEAD'])).out;
+  await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
+  return { ...row, state: 'took-remote', remote: commit };
+}
+
+/** Project the fields the browser dialog renders. */
+function publicUpdateResult(result) {
+  return {
+    skill: result.skill,
+    project: result.project,
+    state: result.state,
+    source: result.source,
+    local: shortCommit(result.local),
+    remote: shortCommit(result.remote),
+    dirty: result.dirty === true,
+    diverged: result.diverged === true,
+    cloneMode: result.cloneMode === true,
+    stashed: result.stashed === true,
+    changes: Array.isArray(result.changes) ? result.changes : [],
+    message: result.message,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -329,6 +627,43 @@ function createRuntime(ctx) {
     return promise;
   }
 
+/**
+ * Read the skills the user installed themselves: the Codex registry at
+ * `~/.cursor/skills` symlinks every user-installed skill, while skills shipped
+ * with the environment never appear there. Matches by link name and resolved
+ * target path.
+ * @param skills - the Session's skill summaries.
+ * @returns skill names the user installed.
+ */
+async function loadUserSkillNames(skills) {
+  const names = new Set();
+  const registryDir = path.join(os.homedir(), '.cursor', 'skills');
+  let entries;
+  try {
+    entries = await fs.readdir(registryDir, { withFileTypes: true });
+  } catch {
+    return names;
+  }
+  for (const entry of entries) {
+    if (!entry.isSymbolicLink()) continue;
+    names.add(entry.name);
+    try {
+      const target = await fs.realpath(path.join(registryDir, entry.name));
+      for (const skill of skills) {
+        if (typeof skill.path !== 'string' || skill.path === '') continue;
+        try {
+          if ((await fs.realpath(skill.path)) === target) names.add(skill.name);
+        } catch {
+          // A skill path that no longer resolves is skipped.
+        }
+      }
+    } catch {
+      // A broken link contributes its name only.
+    }
+  }
+  return names;
+}
+
   async function buildIndex(sessionId, cwd) {
     discovering.add(sessionId);
     try {
@@ -397,7 +732,8 @@ function createRuntime(ctx) {
     }
 
     const rules = await discoverRules(cwd);
-    const projects = discoverProjectGroups(skills, contents);
+    const userInstalled = await loadUserSkillNames(skills);
+    const projects = discoverProjectGroups(skills, contents, userInstalled);
     const dshSkills = skills.filter((skill) => !projects.bySkill.has(skill.name));
     const dshPack = dshSkills.length === 0
       ? undefined
@@ -606,6 +942,120 @@ function createRuntime(ctx) {
     }
   }
 
+  const updateLogPath = path.join(home, 'storages', 'dsh-assets', 'update-log.json');
+
+  async function readUpdateLog() {
+    try {
+      const raw = await fs.readFile(updateLogPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed !== null && typeof parsed === 'object' && Array.isArray(parsed.entries)) return parsed.entries;
+    } catch (error) {
+      if (error?.code !== 'ENOENT') warn('could not read the update log', error);
+    }
+    return [];
+  }
+
+  async function appendUpdateLog(entries) {
+    const next = [...entries, ...(await readUpdateLog())].slice(0, MAX_LOG_ENTRIES);
+    try {
+      await fs.mkdir(path.dirname(updateLogPath), { recursive: true });
+      await fs.writeFile(updateLogPath, `${JSON.stringify({ version: 1, entries: next }, null, 2)}\n`, 'utf8');
+    } catch (error) {
+      warn('could not write the update log', error);
+    }
+  }
+
+  function logEntry(result) {
+    return {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      time: Date.now(),
+      skill: result.skill,
+      project: result.project,
+      action: result.state,
+      source: result.source,
+      from: shortCommit(result.local),
+      to: shortCommit(result.remote),
+      changes: Array.isArray(result.changes) ? result.changes : [],
+      message: result.message,
+    };
+  }
+
+  async function listUserProjects(sessionId) {
+    const index = await ensureIndex(sessionId, { refresh: true });
+    const skillByName = new Map(index.skills.map((skill) => [skill.name, skill]));
+    const rows = [];
+    for (const cluster of index.clusters) {
+      if (cluster.kind !== 'project') continue;
+      for (const name of cluster.skillIds) {
+        const skill = skillByName.get(name);
+        if (skill === undefined || typeof skill.path !== 'string' || skill.path === '') continue;
+        rows.push({ project: cluster.title, skill: skill.name, summary: skill.description, path: skill.path });
+      }
+    }
+    return rows;
+  }
+
+  async function handleUpdate(request) {
+    try {
+      let payload;
+      try {
+        payload = await request.json();
+      } catch {
+        return jsonResponse(400, { error: 'invalid JSON body' });
+      }
+      const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : '';
+      if (sessionId === '') return jsonResponse(400, { error: 'sessionId is required' });
+      const rows = await listUserProjects(sessionId);
+      const results = [];
+      const log = [];
+      for (const row of rows) {
+        const result = await inspectSkillUpdate(row);
+        if (result.state === 'updated') log.push(logEntry(result));
+        results.push(publicUpdateResult(result));
+      }
+      if (log.length > 0) await appendUpdateLog(log);
+      return jsonResponse(200, { results });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  async function handleResolve(request) {
+    try {
+      let payload;
+      try {
+        payload = await request.json();
+      } catch {
+        return jsonResponse(400, { error: 'invalid JSON body' });
+      }
+      const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : '';
+      const skillName = typeof payload?.skill === 'string' ? payload.skill : '';
+      const choice = typeof payload?.choice === 'string' ? payload.choice : '';
+      if (sessionId === '') return jsonResponse(400, { error: 'sessionId is required' });
+      if (skillName === '') return jsonResponse(400, { error: 'skill is required' });
+      const rows = await listUserProjects(sessionId);
+      const row = rows.find((entry) => entry.skill === skillName);
+      if (row === undefined) return jsonResponse(404, { error: 'skill not found in user skill packs' });
+      const current = await inspectSkillUpdate(row);
+      if (current.state !== 'conflict') return jsonResponse(200, { result: publicUpdateResult(current) });
+      const result = await applySkillResolution(current, choice);
+      if (result.state === 'updated' || result.state === 'took-remote' || result.state === 'stashed' || result.state === 'kept-local') {
+        await appendUpdateLog([logEntry(result)]);
+      }
+      return jsonResponse(200, { result: publicUpdateResult(result) });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  async function handleChangelog(request) {
+    try {
+      return jsonResponse(200, { entries: await readUpdateLog() });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
   return {
     start,
     dispose,
@@ -617,6 +1067,9 @@ function createRuntime(ctx) {
     providerGet,
     handleList,
     handleToggle,
+    handleUpdate,
+    handleResolve,
+    handleChangelog,
     providers,
     providerDisposers,
     warn,
@@ -915,7 +1368,7 @@ function projectMetadata(skill, contents) {
  * cross-skill references extend the group. Skills without a project identity
  * remain DSH-provided.
  */
-export function discoverProjectGroups(skills, contents) {
+export function discoverProjectGroups(skills, contents, userInstalled = new Set()) {
   const candidates = skills.filter((skill) => skill.source === 'user-agents' || skill.source === 'custom');
   const parent = new Map(candidates.map((skill) => [skill.name, skill.name]));
   const find = (name) => {
@@ -931,10 +1384,19 @@ export function discoverProjectGroups(skills, contents) {
   const union = (left, right) => {
     const a = find(left);
     const b = find(right);
-    if (a !== b) parent.set(b, a);
+    if (a === b) return;
+    const registry = rootRegistry.get(a) === true || rootRegistry.get(b) === true;
+    parent.set(b, a);
+    if (registry) rootRegistry.set(a, true);
+    rootRegistry.delete(b);
   };
   const seedRoots = new Set();
+  const rootRegistry = new Map();
   const markSeed = (name) => seedRoots.add(find(name));
+  const markRegistry = (name) => {
+    rootRegistry.set(find(name), true);
+    markSeed(name);
+  };
   const metadata = new Map();
   const explicit = new Map();
   const prefixes = new Map();
@@ -966,6 +1428,9 @@ export function discoverProjectGroups(skills, contents) {
     for (const name of names.slice(1)) union(names[0], name);
     markSeed(names[0]);
   }
+  for (const skill of candidates) {
+    if (userInstalled.has(skill.name)) markRegistry(skill.name);
+  }
 
   const names = candidates.map((skill) => skill.name);
   for (let round = 0; round < 3; round += 1) {
@@ -980,12 +1445,11 @@ export function discoverProjectGroups(skills, contents) {
         if (a === b) continue;
         const aSeed = seedRoots.has(a);
         const bSeed = seedRoots.has(b);
-        if (aSeed && !bSeed) {
-          union(a, b);
-          markSeed(b);
-        } else if (bSeed && !aSeed) {
+        if (aSeed && bSeed && rootRegistry.get(a) !== true && rootRegistry.get(b) !== true) continue;
+        if (aSeed || bSeed) {
           union(a, b);
           markSeed(a);
+          markSeed(b);
         }
       }
     }
@@ -1013,7 +1477,7 @@ export function discoverProjectGroups(skills, contents) {
       .sort((left, right) => right[1] - left[1])[0]?.[0] ?? '';
     const representative = members.find((skill) => metadata.get(skill.name).stem === projectStem) ?? members[0];
     const info = metadata.get(representative.name);
-    const base = info.projectName !== '' ? info.projectName : info.repo !== '' ? repoName(info.repo) : projectStem || info.stem;
+    const base = info.projectName !== '' ? info.projectName : info.repo !== '' ? repoName(info.repo) : projectStem !== '' ? projectStem : members.length === 1 ? representative.name : info.stem;
     const title = info.projectName !== '' ? info.projectName : projectDisplayName(base, contents);
     const id = projectSlug(title);
     const version = members.map((skill) => metadata.get(skill.name).version).find((value) => value !== '') ?? '';

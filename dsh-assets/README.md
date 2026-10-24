@@ -18,6 +18,26 @@ Session.
   DSH's workspace-instructions layer and shown read-only; extra rule files are
   switchable.
 
+## Updates
+
+The **用户技能包 / Your skill packs** header carries two buttons:
+
+- **Update** — for every user skill, `git fetch` the official repository. A clean
+  fast-forward merges automatically; local modifications or diverged history
+  open a conflict dialog with three choices: keep local changes, take the
+  official remote (`git reset --hard`), or stash local changes and then update.
+  Skills without a git remote and without `metadata.homepage` / `repository` are
+  matched with the bundled `find-skills` skill (GitHub repository search by
+  name); the official copy then replaces the local one while `.venv` and
+  `node_modules` are preserved.
+- **Update log** — opens the recorded history: per skill, timestamp, action,
+  `from → to` commits, and the short change list. The log lives at
+  `$DSH_HOME/storages/dsh-assets/update-log.json`.
+
+The `find-skills` skill is bundled and declared by this plugin (source
+`runtime`), so it also appears in the DSH presets pack and stays available to
+the agent itself.
+
 ## Install
 
 ```sh
