@@ -48,8 +48,13 @@ window.__ModuleLoader__.load({
       'badge.preset': '预设',
       'badge.default': '默认',
       'badge.broken': '异常',
+      'badge.project': '项目',
+      'project.kind.cli': 'CLI',
+      'project.kind.binary': '预编译二进制',
+      'project.kind.plugin': '插件包 + CLI',
       'folder.dsh': 'DSH 预设',
       'folder.hint': 'DSH 内置预设、插件、技能与规则',
+      'section.myProjects': '我的项目',
       'section.myPresets': '我的预设',
       'section.presets': '内置预设',
       'section.myPlugins': '我的插件',
@@ -66,6 +71,7 @@ window.__ModuleLoader__.load({
       'row.toggleSkill': '在本会话启用此技能',
       'row.toggleRule': '在本会话启用此规则',
       'row.togglePack': '在本会话启用此技能包',
+      'row.toggleProject': '在本会话启用此项目的全部技能',
       'row.readOnlyHint': '由 DSH 工作区指令加载，不能按会话关闭',
       'skills.ungrouped': '未归类的技能',
       'skills.groupHint': '悬停查看包含的技能，点击展开',
@@ -110,8 +116,13 @@ window.__ModuleLoader__.load({
       'badge.preset': 'Preset',
       'badge.default': 'Default',
       'badge.broken': 'Error',
+      'badge.project': 'Project',
+      'project.kind.cli': 'CLI',
+      'project.kind.binary': 'Prebuilt binary',
+      'project.kind.plugin': 'Plugin + CLI',
       'folder.dsh': 'DSH presets',
       'folder.hint': 'Presets, plugins, skills, and rules shipped with DSH',
+      'section.myProjects': 'My projects',
       'section.myPresets': 'My presets',
       'section.presets': 'Built-in presets',
       'section.myPlugins': 'My plugins',
@@ -128,6 +139,7 @@ window.__ModuleLoader__.load({
       'row.toggleSkill': 'Enable this skill for this session',
       'row.toggleRule': 'Enable this rule for this session',
       'row.togglePack': 'Enable this skill pack for this session',
+      'row.toggleProject': 'Enable all skills in this project for this session',
       'row.readOnlyHint': 'Loaded by DSH workspace instructions; not switchable per session',
       'skills.ungrouped': 'Ungrouped skills',
       'skills.groupHint': 'Hover for bundled skills; click to expand',
@@ -502,11 +514,12 @@ window.__ModuleLoader__.load({
     const EMPTY_DATA = Object.freeze({
       plugins: Object.freeze([]),
       presets: Object.freeze([]),
+      projects: Object.freeze([]),
       packs: Object.freeze([]),
       skills: Object.freeze([]),
       ungrouped: Object.freeze([]),
       rules: Object.freeze([]),
-      counts: Object.freeze({ plugins: 0, presets: 0, skills: 0, enabledSkills: 0, packs: 0, rules: 0, enabledRules: 0 }),
+      counts: Object.freeze({ plugins: 0, presets: 0, projects: 0, skills: 0, enabledSkills: 0, packs: 0, rules: 0, enabledRules: 0 }),
     });
 
     /* ------------------------------------------------------------------ */
@@ -884,16 +897,21 @@ window.__ModuleLoader__.load({
 
       const rules = data.rules.filter((rule) => query === '' || matches(rule.title) || matches(rule.summary) || matches(rule.path));
 
-      const isDshSkill = (skill) => skill.source === 'bundled' || skill.source === 'project-agents' || skill.source === 'project-dsh' || skill.source === 'runtime';
       const presetRows = Array.isArray(data.presets) ? data.presets : [];
       const dshPresets = presetRows.filter((preset) => preset.core === true);
       const userPresets = presetRows.filter((preset) => preset.core !== true);
+      const projectGroups = (Array.isArray(data.projects) ? data.projects : []).map((project) => ({
+        ...project,
+        kind: 'project',
+        children: project.skillIds.map((id) => skillById.get(id)).filter(Boolean),
+        pending: state.pending[`pack:${project.id}`] === true,
+      }));
       const dshPlugins = plugins.filter((plugin) => plugin.core === true);
       const userPlugins = plugins.filter((plugin) => plugin.core !== true);
-      const dshGroups = skillGroups.filter((group) => group.isDsh === true);
-      const userGroups = skillGroups.filter((group) => group.isDsh !== true);
-      const dshUngrouped = ungrouped.filter((skill) => isDshSkill(skill));
-      const userUngrouped = ungrouped.filter((skill) => !isDshSkill(skill));
+      // Everything not owned by a user project is DSH-provided, regardless of
+      // whether its switch is currently on.
+      const dshGroups = skillGroups;
+      const dshUngrouped = ungrouped;
       const dshRules = rules.filter((rule) => rule.readOnly === true || rule.managedBy === 'dsh');
       const userRules = rules.filter((rule) => rule.readOnly !== true && rule.managedBy !== 'dsh');
 
@@ -917,9 +935,9 @@ window.__ModuleLoader__.load({
                 ),
               )
             : state.tab === 'plugins'
-              ? renderPluginsTab(t, { userPresets, dshPresets, userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed })
+              ? renderPluginsTab(t, { userPresets, dshPresets, projectGroups, userPlugins, dshPlugins, state, skillById, collapsed, toggleCollapsed })
               : state.tab === 'skills'
-                ? renderSkillsTab(t, { userGroups, userUngrouped, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed })
+                ? renderSkillsTab(t, { projectGroups, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed })
                 : renderRulesTab(t, { userRules, dshRules, state, collapsed, toggleCollapsed });
 
       const allEnabled =
@@ -1127,24 +1145,15 @@ window.__ModuleLoader__.load({
     }
 
     function renderPluginsTab(t, options) {
-      const { userPresets, dshPresets, userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed } = options;
-      const userPacks = userGroups.filter((group) => group.kind === 'pack');
+      const { userPresets, dshPresets, projectGroups, userPlugins, dshPlugins, state, skillById, collapsed, toggleCollapsed } = options;
       const nodes = [];
 
-      if (userPresets.length > 0) {
-        nodes.push(sectionTitle(t, 'section.myPresets'));
-        for (const preset of userPresets) nodes.push(h(PresetRow, { key: `preset:${preset.id}`, t, preset }));
-      }
-      if (userPlugins.length > 0) {
-        nodes.push(sectionTitle(t, 'section.myPlugins'));
-        for (const plugin of userPlugins) nodes.push(pluginRow(t, plugin, state, skillById));
-      }
-      if (userPacks.length > 0) {
-        nodes.push(sectionTitle(t, 'section.myPacks'));
-        for (const group of userPacks) {
+      if (projectGroups.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myProjects'));
+        for (const group of projectGroups) {
           nodes.push(
             h(SkillGroupRow, {
-              key: `preview:${group.id}`,
+              key: `project-preview:${group.id}`,
               t,
               group,
               collapsed: true,
@@ -1153,20 +1162,13 @@ window.__ModuleLoader__.load({
           );
         }
       }
-      if (userUngrouped.length > 0) {
-        nodes.push(sectionTitle(t, 'section.mySkills'));
-        for (const skill of userUngrouped) {
-          nodes.push(
-            h(SkillRow, {
-              key: `plugins:solo:${skill.id}`,
-              t,
-              skill,
-              pending: state.pending[`skill:${skill.id}`] === true,
-              parentOff: false,
-              child: false,
-            }),
-          );
-        }
+      if (userPlugins.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myPlugins'));
+        for (const plugin of userPlugins) nodes.push(pluginRow(t, plugin, state, skillById));
+      }
+      if (userPresets.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myPresets'));
+        for (const preset of userPresets) nodes.push(h(PresetRow, { key: `preset:${preset.id}`, t, preset }));
       }
 
       if (dshPresets.length > 0 || dshPlugins.length > 0) {
@@ -1199,15 +1201,12 @@ window.__ModuleLoader__.load({
     }
 
     function renderSkillsTab(t, options) {
-      const { userGroups, userUngrouped, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed } = options;
+      const { projectGroups, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed } = options;
       const nodes = [];
 
-      if (userGroups.length > 0) {
-        nodes.push(sectionTitle(t, 'section.myPacks'));
-        nodes.push(...skillGroupNodes(t, userGroups, collapsed, toggleCollapsed, state));
-      }
-      if (userUngrouped.length > 0) {
-        nodes.push(...ungroupedNodes(t, userUngrouped, state, 'section.mySkills'));
+      if (projectGroups.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myProjects'));
+        nodes.push(...skillGroupNodes(t, projectGroups, collapsed, toggleCollapsed, state));
       }
 
       if (dshGroups.length > 0 || dshUngrouped.length > 0) {
@@ -1419,7 +1418,11 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'dshast-row-title-line' },
             h('span', { className: 'dshast-row-title' }, group.title),
-            h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, group.kind === 'plugin' ? tr(t, 'badge.session') : tr(t, 'badge.pack')),
+            group.project === true
+              ? h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, tr(t, 'badge.project'))
+              : h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, group.kind === 'plugin' ? tr(t, 'badge.session') : tr(t, 'badge.pack')),
+            group.project === true && group.version ? h('span', { className: 'dshast-badge' }, `v${group.version}`) : null,
+            group.project === true && group.kindLabel ? h('span', { className: 'dshast-badge' }, tr(t, `project.kind.${group.kindLabel}`)) : null,
           ),
           h('div', { className: 'dshast-summary' }, group.summary),
           h(
@@ -1447,8 +1450,8 @@ window.__ModuleLoader__.load({
             checked: group.sessionEnabled,
             mixed: group.mixed,
             disabled: !group.toggleable || group.pending,
-            label: tr(t, 'row.togglePack'),
-            onChange: (next) => store.toggle(group.kind, group.id, next),
+            label: tr(t, group.project === true ? 'row.toggleProject' : 'row.togglePack'),
+            onChange: (next) => store.toggle(group.project === true ? 'pack' : group.kind, group.id, next),
           }),
         ),
         popover.node,

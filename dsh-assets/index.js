@@ -38,6 +38,52 @@ const PACK_TITLES = new Map([
 
 const BUILTIN_PRESETS = new Set(['standard', 'ptc', 'minimal', 'cordis']);
 
+/**
+ * Projects the user installed outside DSH. Skills matching these projects are
+ * clustered by project; every other skill belongs to the DSH presets folder.
+ * Keep the versions in step with the installed CLIs when upgrading a project.
+ */
+const USER_PROJECTS = [
+  {
+    id: 'agent-reach',
+    title: 'Agent Reach',
+    kind: 'cli',
+    version: '1.6.0',
+    summary: 'Read-only fetching for Xiaohongshu, X, Reddit, YouTube transcripts, Xueqiu, and web pages.',
+    summaryZh: '只读抓取小红书、X、Reddit、YouTube 字幕、雪球与网页内容。',
+    skills: ['agent-reach'],
+    prefixes: [],
+  },
+  {
+    id: 'moli',
+    title: 'Moli',
+    kind: 'binary',
+    version: '1.1.19',
+    summary: 'Rendered fetching, multi-engine SERP scraping, image reverse search, and a CDP endpoint.',
+    summaryZh: 'JS 渲染抓取、多引擎 SERP、图片反查与 CDP 端点。',
+    skills: ['moli-webfetch', 'moli-websearch', 'moli-cdp-server'],
+    prefixes: ['moli-'],
+  },
+  {
+    id: 'hyperframes',
+    title: 'HyperFrames',
+    kind: 'plugin',
+    version: '0.8.191',
+    summary: 'HTML-to-video rendering, CLI, 450+ reusable blocks, media, Figma, slideshows, and Remotion migration.',
+    summaryZh: 'HTML 渲染视频、CLI、450+ 可复用块、媒体、Figma、幻灯片与 Remotion 迁移。',
+    skills: [
+      'hyperframes',
+      'hyperframes-cli',
+      'hyperframes-registry',
+      'media-use',
+      'figma',
+      'slideshow',
+      'remotion-to-hyperframes',
+    ],
+    prefixes: ['hyperframes-'],
+  },
+];
+
 const GENERIC_ALIASES = new Set([
   'app', 'base', 'bundle', 'chat', 'client', 'core', 'host', 'plugin', 'server',
   'session', 'tools', 'ui', 'web',
@@ -381,7 +427,9 @@ function createRuntime(ctx) {
     }
 
     const rules = await discoverRules(cwd);
-    const clustering = clusterSkills(skills, contents, plugins);
+    const projects = buildProjectGroups(skills);
+    const remainingSkills = skills.filter((skill) => !projects.bySkill.has(skill.name));
+    const clustering = clusterSkills(remainingSkills, contents, plugins);
 
     return {
       sessionId,
@@ -392,8 +440,8 @@ function createRuntime(ctx) {
       plugins,
       presets,
       rules,
-      clusters: clustering.clusters,
-      skillGroup: clustering.skillGroup,
+      clusters: [...projects.clusters, ...clustering.clusters],
+      skillGroup: new Map([...projects.skillGroup, ...clustering.skillGroup]),
       ungrouped: clustering.ungrouped,
       scopedOnly: new Map(skills.map((skill) => [skill.name, !globalNames.has(skill.name)])),
     };
@@ -517,7 +565,7 @@ function createRuntime(ctx) {
       if (!index.plugins.some((plugin) => plugin.id === value)) throw httpError(400, 'unknown plugin');
       setDisabled(saved.disabledPlugins, value, enabled !== true);
     } else if (kind === 'pack') {
-      const cluster = index.clusters.find((entry) => entry.kind === 'pack' && entry.id === value);
+      const cluster = index.clusters.find((entry) => (entry.kind === 'pack' || entry.kind === 'project') && entry.id === value);
       if (cluster === undefined) throw httpError(400, 'unknown skill pack');
       for (const skillId of cluster.skillIds) setDisabled(saved.disabledSkills, skillId, enabled !== true);
     } else if (kind === 'rule') {
@@ -713,6 +761,27 @@ function serializeIndex(index, locale, saved) {
     });
   }
 
+  const projects = index.clusters
+    .filter((cluster) => cluster.kind === 'project')
+    .map((cluster) => {
+      const children = cluster.skillIds.map((id) => skillView.get(id)).filter(Boolean);
+      const enabledCount = children.filter((skill) => skill.enabled).length;
+      return {
+        id: cluster.id,
+        projectId: cluster.projectId,
+        title: cluster.title,
+        summary: locale === 'zh' ? cluster.summaryZh || cluster.summary : cluster.summary,
+        kindLabel: cluster.kindLabel,
+        version: cluster.version,
+        project: true,
+        toggleable: children.length > 0,
+        sessionEnabled: children.length > 0 && enabledCount === children.length,
+        mixed: children.length > 0 && enabledCount > 0 && enabledCount < children.length,
+        skillIds: children.map((skill) => skill.id),
+        skillCount: children.length,
+      };
+    });
+
   const packs = index.clusters
     .filter((cluster) => cluster.kind === 'pack')
     .map((cluster) => {
@@ -770,6 +839,7 @@ function serializeIndex(index, locale, saved) {
       enabledSkills: skills.filter((skill) => skill.enabled).length,
       packs: packs.length,
       presets: presets.length,
+      projects: projects.length,
       rules: rules.length,
       enabledRules: rules.filter((rule) => rule.enabled).length,
     },
@@ -779,6 +849,45 @@ function serializeIndex(index, locale, saved) {
 /* -------------------------------------------------------------------------- */
 /* clustering                                                                 */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Build the user-installed project clusters. A project owns the skills listed
+ * in USER_PROJECTS (and its prefixes); every other skill is DSH-provided.
+ */
+function buildProjectGroups(skills) {
+  const bySkill = new Map();
+  const groups = new Map();
+  for (const project of USER_PROJECTS) {
+    for (const skill of skills) {
+      if (project.skills.includes(skill.name) || project.prefixes.some((prefix) => skill.name.startsWith(prefix))) {
+        bySkill.set(skill.name, project);
+      }
+    }
+  }
+  for (const skill of skills) {
+    const project = bySkill.get(skill.name);
+    if (project === undefined) continue;
+    const id = `project:${project.id}`;
+    const group = groups.get(id) ?? {
+      kind: 'project',
+      id,
+      projectId: project.id,
+      title: project.title,
+      summary: project.summary,
+      summaryZh: project.summaryZh,
+      kindLabel: project.kind,
+      version: project.version,
+      skillIds: [],
+    };
+    group.skillIds.push(skill.name);
+    groups.set(id, group);
+  }
+  return {
+    clusters: [...groups.values()],
+    bySkill,
+    skillGroup: new Map([...bySkill].map(([name, project]) => [name, { groupId: `project:${project.id}`, kind: 'project' }])),
+  };
+}
 
 /**
  * Group the skill catalog by owning plugin, mutual references, and shared name

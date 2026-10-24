@@ -50,7 +50,7 @@ installed globally.
 
 ## Grouping
 
-Skills are clustered in this order:
+User-installed projects are declared in the Host plugin's `USER_PROJECTS` manifest (Agent Reach, Moli, and HyperFrames at the versions shipped with this repository). Their skills are clustered by project; **every other skill is DSH-provided** and collapses into the DSH presets folder, enabled or not. Within the remaining skills, grouping is:
 
 1. A skill whose provider or file path names an installed plugin.
 2. A skill whose name or description matches the plugin's brand.
