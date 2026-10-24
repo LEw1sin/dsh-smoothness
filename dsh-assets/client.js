@@ -1290,8 +1290,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dshast-section' }, tr(t, key));
     }
 
-    function userPackHeader(t) {
-      const state = useStore();
+    function userPackHeader(t, state) {
       const running = state.update !== null && state.update.kind === 'run' && state.update.loading === true;
       return h(
         'div',
@@ -1569,7 +1568,7 @@ window.__ModuleLoader__.load({
       const { userPacks, dshPacks, state, collapsed, toggleCollapsed } = options;
       const nodes = [];
       if (userPacks.length > 0) {
-        nodes.push(userPackHeader(t));
+        nodes.push(userPackHeader(t, state));
         nodes.push(...skillGroupNodes(t, userPacks, collapsed, toggleCollapsed, state));
       }
       if (dshPacks.length > 0) {
