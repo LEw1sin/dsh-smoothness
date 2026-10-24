@@ -1125,18 +1125,22 @@ window.__ModuleLoader__.load({
           }),
         );
         if (!isCollapsed) {
-          for (const skill of group.children) {
-            nodes.push(
-              h(SkillRow, {
-                key: `${group.id}:${skill.id}`,
-                t,
-                skill,
-                pending: state.pending[`skill:${skill.id}`] === true,
-                parentOff: group.sessionEnabled === false && group.mixed !== true,
-                child: true,
-              }),
-            );
-          }
+          nodes.push(
+            h(
+              'div',
+              { key: `${group.id}:children`, className: 'dshast-child' },
+              group.children.map((skill) =>
+                h(SkillRow, {
+                  key: `${group.id}:${skill.id}`,
+                  t,
+                  skill,
+                  pending: state.pending[`skill:${skill.id}`] === true,
+                  parentOff: group.sessionEnabled === false && group.mixed !== true,
+                  child: true,
+                }),
+              ),
+            ),
+          );
         }
       }
       return nodes;
