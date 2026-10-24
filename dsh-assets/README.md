@@ -10,7 +10,7 @@ Session.
 
 - **Skills** — two sections. **用户技能包** holds user projects discovered from
   their skills (Agent Reach, Moli, HyperFrames, IndexTTS, and future installs);
-  **DSH预设** holds every other skill. Both list all skills whether or not the
+  **DSH预设** holds every other skill. Packs start collapsed; both lists include all skills whether or not the
   current Session enables them. Hovering a pack lists its skills; each skill
   has its own switch and state.
 - **Rules** — `AGENTS.md` / `CLAUDE.md`, `RULE.md`, and `.dsh/rules`,

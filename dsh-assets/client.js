@@ -864,7 +864,7 @@ window.__ModuleLoader__.load({
     function AssetsModal({ t }) {
       const state = useStore();
       const data = state.data ?? EMPTY_DATA;
-      const [collapsed, setCollapsed] = React.useState({ 'dsh:plugins': true, 'dsh:skills': true, 'dsh:rules': true });
+      const [collapsed, setCollapsed] = React.useState({});
       const searchRef = React.useRef(null);
 
       React.useEffect(() => {
@@ -938,7 +938,7 @@ window.__ModuleLoader__.load({
       const userRules = rules.filter((rule) => rule.readOnly !== true && rule.managedBy !== 'dsh');
 
       const toggleCollapsed = (id) => {
-        setCollapsed((current) => ({ ...current, [id]: current[id] !== true }));
+        setCollapsed((current) => ({ ...current, [id]: current[id] === false }));
       };
 
       const body =
@@ -1116,7 +1116,7 @@ window.__ModuleLoader__.load({
     function skillGroupNodes(t, groups, collapsed, toggleCollapsed, state) {
       const nodes = [];
       for (const group of groups) {
-        const isCollapsed = collapsed[group.id] === true;
+        const isCollapsed = collapsed[group.id] !== false;
         nodes.push(
           h(SkillGroupRow, {
             key: group.id,
@@ -1212,7 +1212,7 @@ window.__ModuleLoader__.load({
               t,
               title: 'folder.dsh',
               count: dshPresets.length + dshPlugins.length,
-              open: collapsed[key] !== true,
+              open: collapsed[key] === false,
               onToggle: () => toggleCollapsed(key),
             },
             children,
@@ -1254,7 +1254,7 @@ window.__ModuleLoader__.load({
               t,
               title: 'folder.dsh',
               count: dshRules.length,
-              open: collapsed[key] !== true,
+              open: collapsed[key] === false,
               onToggle: () => toggleCollapsed(key),
             },
             renderRules(t, dshRules, state),

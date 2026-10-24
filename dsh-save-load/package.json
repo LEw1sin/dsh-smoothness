@@ -1,0 +1,53 @@
+{
+  "name": "@lew1sin/dsh-save-load",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Save / Load: turn a long session into a handoff manual and continue the work in a fresh session.",
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "handoff",
+    "session",
+    "save-load"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-commands"
+      ]
+    }
+  },
+  "author": "LEw1sin",
+  "homepage": "https://github.com/LEw1sin/dsh-smoothness#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LEw1sin/dsh-smoothness.git",
+    "directory": "dsh-save-load"
+  },
+  "bugs": {
+    "url": "https://github.com/LEw1sin/dsh-smoothness/issues"
+  }
+}
