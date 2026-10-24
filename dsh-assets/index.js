@@ -30,59 +30,7 @@ const GENERIC_STEMS = new Set([
   'status', 'tool', 'update', 'use', 'workspace', 'write',
 ]);
 
-const PACK_TITLES = new Map([
-  ['hyperframes', 'HyperFrames'],
-  ['moli', 'Moli'],
-  ['office', 'Office'],
-]);
-
 const BUILTIN_PRESETS = new Set(['standard', 'ptc', 'minimal', 'cordis']);
-
-/**
- * Projects the user installed outside DSH. Skills matching these projects are
- * clustered by project; every other skill belongs to the DSH presets folder.
- * Keep the versions in step with the installed CLIs when upgrading a project.
- */
-const USER_PROJECTS = [
-  {
-    id: 'agent-reach',
-    title: 'Agent Reach',
-    kind: 'cli',
-    version: '1.6.0',
-    summary: 'Read-only fetching for Xiaohongshu, X, Reddit, YouTube transcripts, Xueqiu, and web pages.',
-    summaryZh: '只读抓取小红书、X、Reddit、YouTube 字幕、雪球与网页内容。',
-    skills: ['agent-reach'],
-    prefixes: [],
-  },
-  {
-    id: 'moli',
-    title: 'Moli',
-    kind: 'binary',
-    version: '1.1.19',
-    summary: 'Rendered fetching, multi-engine SERP scraping, image reverse search, and a CDP endpoint.',
-    summaryZh: 'JS 渲染抓取、多引擎 SERP、图片反查与 CDP 端点。',
-    skills: ['moli-webfetch', 'moli-websearch', 'moli-cdp-server'],
-    prefixes: ['moli-'],
-  },
-  {
-    id: 'hyperframes',
-    title: 'HyperFrames',
-    kind: 'plugin',
-    version: '0.8.191',
-    summary: 'HTML-to-video rendering, CLI, 450+ reusable blocks, media, Figma, slideshows, and Remotion migration.',
-    summaryZh: 'HTML 渲染视频、CLI、450+ 可复用块、媒体、Figma、幻灯片与 Remotion 迁移。',
-    skills: [
-      'hyperframes',
-      'hyperframes-cli',
-      'hyperframes-registry',
-      'media-use',
-      'figma',
-      'slideshow',
-      'remotion-to-hyperframes',
-    ],
-    prefixes: ['hyperframes-'],
-  },
-];
 
 const GENERIC_ALIASES = new Set([
   'app', 'base', 'bundle', 'chat', 'client', 'core', 'host', 'plugin', 'server',
@@ -449,7 +397,7 @@ function createRuntime(ctx) {
     }
 
     const rules = await discoverRules(cwd);
-    const projects = buildProjectGroups(skills);
+    const projects = discoverProjectGroups(skills, contents);
     const dshSkills = skills.filter((skill) => !projects.bySkill.has(skill.name));
     const dshPack = dshSkills.length === 0
       ? undefined
@@ -888,43 +836,213 @@ function serializeIndex(index, locale, saved) {
 /* clustering                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/** Last path segment of an owner/repo identity. */
+function repoName(repo) {
+  return String(repo).split('/')[1] ?? '';
+}
+
+/** Normalize a Git host URL to owner/repo, optionally requiring the repo name. */
+function repoFromText(value, requiredName) {
+  const text = String(value ?? '');
+  const pattern = /(?:github\.com|gitlab\.com|bitbucket\.org)[/:]([^/\s]+)\/([^/\s#?]+)/gi;
+  for (const match of text.matchAll(pattern)) {
+    const name = match[2].replace(/\.git$/i, '').toLowerCase();
+    if (requiredName !== undefined && name !== requiredName) continue;
+    return `${match[1].toLowerCase()}/${name}`;
+  }
+  return '';
+}
+
+/** First non-generic segment of a skill name, used as a project prefix. */
+function projectStem(name) {
+  const stem = String(name).split(/[-_]/)[0].toLowerCase();
+  return stem.length >= 3 && !GENERIC_STEMS.has(stem) ? stem : '';
+}
+
+/** Pick the casing a project's documentation uses for its own name. */
+function projectDisplayName(base, contents) {
+  const key = String(base).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (key === '') return titleCase(base);
+  const counts = new Map();
+  for (const text of contents.values()) {
+    for (const token of String(text).match(/[A-Za-z][A-Za-z0-9]*/g) ?? []) {
+      if (token.toLowerCase() === key) counts.set(token, (counts.get(token) ?? 0) + 1);
+    }
+  }
+  let upper = '';
+  let upperCount = 0;
+  let lower = '';
+  let lowerCount = 0;
+  for (const [token, count] of counts) {
+    if (/[A-Z]/.test(token)) {
+      if (count > upperCount) {
+        upper = token;
+        upperCount = count;
+      }
+    } else if (count > lowerCount) {
+      lower = token;
+      lowerCount = count;
+    }
+  }
+  if (upper !== '') return upper;
+  if (lower !== '') return lower;
+  return titleCase(base);
+}
+
+/** Read the project identity a skill declares or references. */
+function projectMetadata(skill, contents) {
+  const content = contents.get(skill.name) ?? '';
+  const frontmatter = parseFrontmatter(content).data;
+  const metadata = frontmatter.metadata !== null && typeof frontmatter.metadata === 'object' ? frontmatter.metadata : {};
+  const declared = String(metadata.project ?? metadata.package ?? '').trim();
+  const declaredRepo = repoFromText(metadata.homepage ?? metadata.repository ?? metadata.repo ?? '');
+  const stem = projectStem(skill.name);
+  const contentRepo = stem === '' ? '' : repoFromText(content, stem);
+  return {
+    projectName: declared,
+    repo: declaredRepo || contentRepo,
+    version: String(metadata.version ?? '').trim(),
+    kind: String(metadata.kind ?? metadata.type ?? '').trim(),
+    description: String(metadata.description ?? '').trim(),
+    stem,
+  };
+}
+
 /**
- * Build the user-installed project clusters. A project owns the skills listed
- * in USER_PROJECTS (and its prefixes); every other skill is DSH-provided.
+ * Discover user-installed projects from skill provenance. A project is seeded
+ * by explicit frontmatter metadata, a repository URL that matches a skill's
+ * prefix, or a non-generic prefix shared by at least two user skills;
+ * cross-skill references extend the group. Skills without a project identity
+ * remain DSH-provided.
  */
-function buildProjectGroups(skills) {
-  const bySkill = new Map();
-  const groups = new Map();
-  for (const project of USER_PROJECTS) {
-    for (const skill of skills) {
-      if (project.skills.includes(skill.name) || project.prefixes.some((prefix) => skill.name.startsWith(prefix))) {
-        bySkill.set(skill.name, project);
+export function discoverProjectGroups(skills, contents) {
+  const candidates = skills.filter((skill) => skill.source === 'user-agents' || skill.source === 'custom');
+  const parent = new Map(candidates.map((skill) => [skill.name, skill.name]));
+  const find = (name) => {
+    let current = name;
+    while (parent.get(current) !== current) current = parent.get(current);
+    while (parent.get(name) !== current) {
+      const next = parent.get(name);
+      parent.set(name, current);
+      name = next;
+    }
+    return current;
+  };
+  const union = (left, right) => {
+    const a = find(left);
+    const b = find(right);
+    if (a !== b) parent.set(b, a);
+  };
+  const seedRoots = new Set();
+  const markSeed = (name) => seedRoots.add(find(name));
+  const metadata = new Map();
+  const explicit = new Map();
+  const prefixes = new Map();
+
+  for (const skill of candidates) {
+    const info = projectMetadata(skill, contents);
+    metadata.set(skill.name, info);
+    let key = '';
+    if (info.repo !== '') key = `repo:${info.repo}`;
+    else if (info.projectName !== '') key = `project:${info.projectName.toLowerCase()}`;
+    if (key !== '') {
+      const names = explicit.get(key) ?? [];
+      names.push(skill.name);
+      explicit.set(key, names);
+    }
+    if (info.stem !== '') {
+      const names = prefixes.get(info.stem) ?? [];
+      names.push(skill.name);
+      prefixes.set(info.stem, names);
+    }
+  }
+
+  for (const names of explicit.values()) {
+    for (const name of names.slice(1)) union(names[0], name);
+    markSeed(names[0]);
+  }
+  for (const names of prefixes.values()) {
+    if (names.length < 2) continue;
+    for (const name of names.slice(1)) union(names[0], name);
+    markSeed(names[0]);
+  }
+
+  const names = candidates.map((skill) => skill.name);
+  for (let round = 0; round < 3; round += 1) {
+    for (const skill of candidates) {
+      const content = contents.get(skill.name) ?? '';
+      for (const other of names) {
+        if (other === skill.name) continue;
+        const linked = content.includes(`../${other}/`) || content.includes(`/${other})`) || content.includes(`/${other}/`);
+        if (!linked) continue;
+        const a = find(skill.name);
+        const b = find(other);
+        if (a === b) continue;
+        const aSeed = seedRoots.has(a);
+        const bSeed = seedRoots.has(b);
+        if (aSeed && !bSeed) {
+          union(a, b);
+          markSeed(b);
+        } else if (bSeed && !aSeed) {
+          union(a, b);
+          markSeed(a);
+        }
       }
     }
   }
-  for (const skill of skills) {
-    const project = bySkill.get(skill.name);
-    if (project === undefined) continue;
-    const id = `project:${project.id}`;
-    const group = groups.get(id) ?? {
-      kind: 'project',
-      id,
-      projectId: project.id,
-      title: project.title,
-      summary: project.summary,
-      summaryZh: project.summaryZh,
-      kindLabel: project.kind,
-      version: project.version,
-      skillIds: [],
-    };
-    group.skillIds.push(skill.name);
-    groups.set(id, group);
+
+  const groups = new Map();
+  for (const skill of candidates) {
+    const root = find(skill.name);
+    if (!seedRoots.has(root)) continue;
+    const members = groups.get(root) ?? [];
+    members.push(skill);
+    groups.set(root, members);
   }
+
+  const clusters = [];
+  const bySkill = new Map();
+  for (const members of groups.values()) {
+    const stemCounts = new Map();
+    for (const skill of members) {
+      const stem = metadata.get(skill.name).stem;
+      if (stem !== '') stemCounts.set(stem, (stemCounts.get(stem) ?? 0) + 1);
+    }
+    const projectStem = [...stemCounts.entries()]
+      .filter(([, count]) => count >= 2)
+      .sort((left, right) => right[1] - left[1])[0]?.[0] ?? '';
+    const representative = members.find((skill) => metadata.get(skill.name).stem === projectStem) ?? members[0];
+    const info = metadata.get(representative.name);
+    const base = info.projectName !== '' ? info.projectName : info.repo !== '' ? repoName(info.repo) : projectStem || info.stem;
+    const title = info.projectName !== '' ? info.projectName : projectDisplayName(base, contents);
+    const id = projectSlug(title);
+    const version = members.map((skill) => metadata.get(skill.name).version).find((value) => value !== '') ?? '';
+    const kindLabel = members.map((skill) => metadata.get(skill.name).kind).find((value) => value !== '') ?? '';
+    const description = members.map((skill) => metadata.get(skill.name).description).find((value) => value !== '');
+    const cluster = {
+      kind: 'project',
+      id: `project:${id}`,
+      projectId: id,
+      title,
+      summary: description !== undefined && description !== '' ? description : representative.summary,
+      version,
+      kindLabel,
+      skillIds: members.map((skill) => skill.name),
+    };
+    clusters.push(cluster);
+    for (const skill of members) bySkill.set(skill.name, cluster);
+  }
+
   return {
-    clusters: [...groups.values()],
+    clusters,
     bySkill,
-    skillGroup: new Map([...bySkill].map(([name, project]) => [name, { groupId: `project:${project.id}`, kind: 'project' }])),
+    skillGroup: new Map([...bySkill].map(([name, cluster]) => [name, { groupId: cluster.id, kind: 'project' }])),
   };
+}
+
+/** Normalize a display name into a stable project id. */
+function projectSlug(value) {
+  return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
 }
 
 /**
@@ -1034,7 +1152,7 @@ export function clusterSkills(skills, contents, plugins) {
       clusters.push({
         kind: 'pack',
         id: packId,
-        title: PACK_TITLES.get(packKey) ?? titleCase(packKey),
+        title: titleCase(packKey),
         summary: firstSentence(rootSkill.description || contents.get(rootSkill.name) || ''),
         skillIds,
       });
@@ -1234,10 +1352,18 @@ export function parseFrontmatter(value) {
   if (end === -1) return { data: {}, body: text };
   const raw = text.slice(4, end);
   const data = {};
+  let section = '';
   for (const line of raw.split(/\r?\n/)) {
-    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-    if (match === null) continue;
-    data[match[1]] = match[2].replace(/^['"]|['"]$/g, '').trim();
+    const top = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (top !== null) {
+      section = top[2] === '' ? top[1] : '';
+      data[top[1]] = top[2].replace(/^['"]|['"]$/g, '').trim();
+      continue;
+    }
+    const nested = /^\s+([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+    if (nested === null || section === '') continue;
+    if (typeof data[section] !== 'object' || data[section] === null) data[section] = {};
+    data[section][nested[1]] = nested[2].replace(/^['"]|['"]$/g, '').trim();
   }
   return { data, body: text.slice(end + 4) };
 }
