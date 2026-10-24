@@ -36,6 +36,8 @@ const PACK_TITLES = new Map([
   ['office', 'Office'],
 ]);
 
+const BUILTIN_PRESETS = new Set(['standard', 'ptc', 'minimal', 'cordis']);
+
 const GENERIC_ALIASES = new Set([
   'app', 'base', 'bundle', 'chat', 'client', 'core', 'host', 'plugin', 'server',
   'session', 'tools', 'ui', 'web',
@@ -369,6 +371,15 @@ function createRuntime(ctx) {
       .filter((bundle) => bundle !== null && typeof bundle === 'object' && bundle.availability !== 'missing')
       .map(toPlugin);
 
+    let presets = [];
+    try {
+      const registry = ctx.get('agentPresets');
+      const roster = registry === undefined ? undefined : await registry.remoteExportList();
+      presets = (roster?.presets ?? []).map(toPreset);
+    } catch (error) {
+      warn('could not list agent presets', error);
+    }
+
     const rules = await discoverRules(cwd);
     const clustering = clusterSkills(skills, contents, plugins);
 
@@ -379,6 +390,7 @@ function createRuntime(ctx) {
       skills,
       contents,
       plugins,
+      presets,
       rules,
       clusters: clustering.clusters,
       skillGroup: clustering.skillGroup,
@@ -605,6 +617,19 @@ function toPlugin(bundle) {
   };
 }
 
+/** Convert one agent-preset roster row into the catalog's preset shape. */
+function toPreset(preset) {
+  const id = String(preset.id ?? '');
+  return {
+    id,
+    title: typeof preset.name === 'string' && preset.name !== '' ? preset.name : id,
+    description: typeof preset.description === 'string' ? preset.description : '',
+    isDefault: preset.isDefault === true,
+    broken: typeof preset.broken === 'string' ? preset.broken : undefined,
+    core: BUILTIN_PRESETS.has(id),
+  };
+}
+
 /** Project global skill summaries into filter-provider candidates. */
 function toCandidate(skill) {
   return {
@@ -719,11 +744,21 @@ function serializeIndex(index, locale, saved) {
     bytes: rule.bytes,
   }));
 
+  const presets = (index.presets ?? []).map((preset) => ({
+    id: preset.id,
+    title: preset.title,
+    summary: firstSentence(preset.description || `Agent preset ${preset.title}.`),
+    isDefault: preset.isDefault === true,
+    broken: preset.broken,
+    core: preset.core === true,
+  }));
+
   return {
     sessionId: index.sessionId,
     cwd: index.cwd,
     builtAt: index.builtAt,
     plugins,
+    presets,
     packs,
     skills,
     ungrouped,
@@ -734,6 +769,7 @@ function serializeIndex(index, locale, saved) {
       skills: skills.length,
       enabledSkills: skills.filter((skill) => skill.enabled).length,
       packs: packs.length,
+      presets: presets.length,
       rules: rules.length,
       enabledRules: rules.filter((rule) => rule.enabled).length,
     },

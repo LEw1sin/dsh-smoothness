@@ -46,8 +46,12 @@ window.__ModuleLoader__.load({
       'badge.profile': 'Profile',
       'badge.readOnly': '只读',
       'badge.preset': '预设',
-      'folder.dsh': 'DSH 自带',
-      'folder.hint': 'DeepSeek Harness 内置的插件、技能与规则',
+      'badge.default': '默认',
+      'badge.broken': '异常',
+      'folder.dsh': 'DSH 预设',
+      'folder.hint': 'DSH 内置预设、插件、技能与规则',
+      'section.myPresets': '我的预设',
+      'section.presets': '内置预设',
       'section.myPlugins': '我的插件',
       'section.myPacks': '我的技能包',
       'section.mySkills': '我的技能',
@@ -104,8 +108,12 @@ window.__ModuleLoader__.load({
       'badge.profile': 'Profile',
       'badge.readOnly': 'Read-only',
       'badge.preset': 'Preset',
-      'folder.dsh': 'Provided by DSH',
-      'folder.hint': 'Plugins, skills, and rules shipped with DeepSeek Harness',
+      'badge.default': 'Default',
+      'badge.broken': 'Error',
+      'folder.dsh': 'DSH presets',
+      'folder.hint': 'Presets, plugins, skills, and rules shipped with DSH',
+      'section.myPresets': 'My presets',
+      'section.presets': 'Built-in presets',
       'section.myPlugins': 'My plugins',
       'section.myPacks': 'My skill packs',
       'section.mySkills': 'My skills',
@@ -327,6 +335,7 @@ window.__ModuleLoader__.load({
 .dshast-row[data-kind='plugin'] .dshast-icon { color: var(--dsw-alias-brand-primary); }
 .dshast-row[data-kind='skill'] .dshast-icon { color: var(--dsw-alias-state-success-primary); }
 .dshast-row[data-kind='rule'] .dshast-icon { color: var(--dsw-alias-state-warn-primary); }
+.dshast-row[data-kind='preset'] .dshast-icon { color: var(--dsw-alias-brand-primary); }
 .dshast-main { flex: 1; min-width: 0; }
 .dshast-row-title-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dshast-row-title {
@@ -492,11 +501,12 @@ window.__ModuleLoader__.load({
 
     const EMPTY_DATA = Object.freeze({
       plugins: Object.freeze([]),
+      presets: Object.freeze([]),
       packs: Object.freeze([]),
       skills: Object.freeze([]),
       ungrouped: Object.freeze([]),
       rules: Object.freeze([]),
-      counts: Object.freeze({ plugins: 0, skills: 0, enabledSkills: 0, packs: 0, rules: 0, enabledRules: 0 }),
+      counts: Object.freeze({ plugins: 0, presets: 0, skills: 0, enabledSkills: 0, packs: 0, rules: 0, enabledRules: 0 }),
     });
 
     /* ------------------------------------------------------------------ */
@@ -754,6 +764,14 @@ window.__ModuleLoader__.load({
           h('path', { d: 'M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5' }),
         );
       }
+      if (name === 'preset') {
+        return h(
+          'svg',
+          common,
+          h('path', { d: 'M12 3 3.8 7.2 12 11.4l8.2-4.2L12 3Z' }),
+          h('path', { d: 'M3.8 12 12 16.2l8.2-4.2M3.8 16.8 12 21l8.2-4.2' }),
+        );
+      }
       if (name === 'folder') {
         return h(
           'svg',
@@ -867,6 +885,9 @@ window.__ModuleLoader__.load({
       const rules = data.rules.filter((rule) => query === '' || matches(rule.title) || matches(rule.summary) || matches(rule.path));
 
       const isDshSkill = (skill) => skill.source === 'bundled' || skill.source === 'project-dsh' || skill.source === 'runtime';
+      const presetRows = Array.isArray(data.presets) ? data.presets : [];
+      const dshPresets = presetRows.filter((preset) => preset.core === true);
+      const userPresets = presetRows.filter((preset) => preset.core !== true);
       const dshPlugins = plugins.filter((plugin) => plugin.core === true);
       const userPlugins = plugins.filter((plugin) => plugin.core !== true);
       const dshGroups = skillGroups.filter((group) => group.isDsh === true);
@@ -896,7 +917,7 @@ window.__ModuleLoader__.load({
                 ),
               )
             : state.tab === 'plugins'
-              ? renderPluginsTab(t, { userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed })
+              ? renderPluginsTab(t, { userPresets, dshPresets, userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed })
               : state.tab === 'skills'
                 ? renderSkillsTab(t, { userGroups, userUngrouped, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed })
                 : renderRulesTab(t, { userRules, dshRules, state, collapsed, toggleCollapsed });
@@ -1106,10 +1127,14 @@ window.__ModuleLoader__.load({
     }
 
     function renderPluginsTab(t, options) {
-      const { userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed } = options;
+      const { userPresets, dshPresets, userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed } = options;
       const userPacks = userGroups.filter((group) => group.kind === 'pack');
       const nodes = [];
 
+      if (userPresets.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myPresets'));
+        for (const preset of userPresets) nodes.push(h(PresetRow, { key: `preset:${preset.id}`, t, preset }));
+      }
       if (userPlugins.length > 0) {
         nodes.push(sectionTitle(t, 'section.myPlugins'));
         for (const plugin of userPlugins) nodes.push(pluginRow(t, plugin, state, skillById));
@@ -1144,8 +1169,16 @@ window.__ModuleLoader__.load({
         }
       }
 
-      if (dshPlugins.length > 0) {
+      if (dshPresets.length > 0 || dshPlugins.length > 0) {
         const key = 'dsh:plugins';
+        const children = [];
+        if (dshPresets.length > 0) {
+          children.push(sectionTitle(t, 'section.presets'));
+          for (const preset of dshPresets) {
+            children.push(h(PresetRow, { key: `dsh-preset:${preset.id}`, t, preset }));
+          }
+        }
+        for (const plugin of dshPlugins) children.push(pluginRow(t, plugin, state, skillById));
         nodes.push(
           h(
             FolderRow,
@@ -1153,11 +1186,11 @@ window.__ModuleLoader__.load({
               key,
               t,
               title: 'folder.dsh',
-              count: dshPlugins.length,
+              count: dshPresets.length + dshPlugins.length,
               open: collapsed[key] !== true,
               onToggle: () => toggleCollapsed(key),
             },
-            dshPlugins.map((plugin) => pluginRow(t, plugin, state, skillById)),
+            children,
           ),
         );
       }
@@ -1457,6 +1490,32 @@ window.__ModuleLoader__.load({
             label: tr(t, 'row.toggleSkill'),
             onChange: (next) => store.toggle('skill', skill.id, next),
           }),
+        ),
+      );
+    }
+
+    function PresetRow({ t, preset }) {
+      return h(
+        'div',
+        { className: 'dshast-row', 'data-kind': 'preset' },
+        h('div', { className: 'dshast-icon' }, icon('preset', 15)),
+        h(
+          'div',
+          { className: 'dshast-main' },
+          h(
+            'div',
+            { className: 'dshast-row-title-line' },
+            h('span', { className: 'dshast-row-title' }, preset.title),
+            preset.isDefault ? h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, tr(t, 'badge.default')) : null,
+            preset.core ? h('span', { className: 'dshast-badge' }, tr(t, 'folder.dsh')) : null,
+            preset.broken ? h('span', { className: 'dshast-badge', 'data-tone': 'error' }, tr(t, 'badge.broken')) : null,
+          ),
+          h('div', { className: 'dshast-summary' }, preset.summary || preset.id),
+          h(
+            'div',
+            { className: 'dshast-meta' },
+            h('span', { className: 'dshast-badge dshast-mono' }, preset.id),
+          ),
         ),
       );
     }

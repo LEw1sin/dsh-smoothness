@@ -56,7 +56,7 @@ See [dsh-btw/README.md](dsh-btw/README.md) for details and limits.
 ## dsh-assets — Assets
 
 - Tabs for **Plugins**, **Skills**, and **Rules** with one-sentence summaries.
-- DSH-provided plugins, skills, and rules are collected under one collapsible **DSH** folder; clicking it reveals what ships with DeepSeek Harness.
+- DSH's built-in agent presets, plugins, skills, and rules are collected under one collapsible **DSH presets** folder; clicking it reveals what ships with DeepSeek Harness. It starts collapsed and sits after your own assets.
 - Your own plugins, skill packs, and skills are listed directly, including preset-scoped user skills such as Moli and Agent Reach.
 - Skills are grouped by owning plugin, by `../skill` references, or by shared name prefix; a plugin-like collection such as HyperFrames becomes one card with its bundled skills on hover.
 - Every row has a session-scoped switch. Disabled skills disappear from that Session's model catalog; disabled rule files stop being injected into its system-prompt context; disabling a plugin disables its attributed skills.
