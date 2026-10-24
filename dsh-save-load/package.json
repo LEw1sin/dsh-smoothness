@@ -1,6 +1,6 @@
 {
   "name": "@lew1sin/dsh-save-load",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Save / Load: turn a long session into a handoff manual and continue the work in a fresh session.",
   "license": "MIT",

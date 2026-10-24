@@ -85,7 +85,7 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['locale'],
+      inject: ['locale', 'commandUi'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-save-load: dictionaries');
         const t = ctx.locale.bind(NS);
