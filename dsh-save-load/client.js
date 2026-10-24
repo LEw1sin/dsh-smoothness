@@ -278,7 +278,7 @@ window.__ModuleLoader__.load({
           return data;
         }
 
-        let saveInFlight = null;
+        const savesInFlight = new Map();
 
         /**
          * Archive the Session once; repeated calls share the in-flight request
@@ -286,20 +286,21 @@ window.__ModuleLoader__.load({
          * @param sessionId - source Session.
          */
         async function archiveSession(sessionId) {
-          if (saveInFlight !== null) {
+          const current = savesInFlight.get(sessionId);
+          if (current !== undefined) {
             publishStatus({
               phase: 'saving',
               title: t('status.savingTitle'),
               detail: t('status.savingDetail'),
             });
-            return saveInFlight;
+            return current;
           }
           publishStatus({
             phase: 'saving',
             title: t('status.savingTitle'),
             detail: t('status.savingDetail'),
           });
-          saveInFlight = request('save', { sessionId })
+          const job = request('save', { sessionId })
             .then((data) => {
               const title = typeof data?.archive?.title === 'string' && data.archive.title !== '' ? data.archive.title : t('status.noTitle');
               if (data?.reused === true) {
@@ -319,9 +320,10 @@ window.__ModuleLoader__.load({
               });
             })
             .finally(() => {
-              saveInFlight = null;
+              if (savesInFlight.get(sessionId) === job) savesInFlight.delete(sessionId);
             });
-          return saveInFlight;
+          savesInFlight.set(sessionId, job);
+          return job;
         }
 
         /**
