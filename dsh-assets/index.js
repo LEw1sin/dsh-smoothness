@@ -398,6 +398,28 @@ function createRuntime(ctx) {
         warn('could not list skills', error);
         return [];
       });
+    const seenSkills = new Set(skills.map((skill) => skill.name));
+    const sessionCatalog = ctx.get('sessionSkillCatalog');
+    if (sessionCatalog !== undefined) {
+      try {
+        const listed = await sessionCatalog.list({ sessionId }, new AbortController().signal);
+        for (const entry of listed?.skills ?? []) {
+          if (seenSkills.has(entry.name)) continue;
+          seenSkills.add(entry.name);
+          skills.push({
+            name: entry.name,
+            description: entry.description,
+            whenToUse: entry.whenToUse,
+            path: entry.path,
+            source: 'custom',
+            provider: 'session-skill-catalog',
+            invocation: { modelInvocable: entry.modelInvocable === true, userInvocable: true },
+          });
+        }
+      } catch (error) {
+        warn('could not read the session skill catalog', error);
+      }
+    }
     const globalSkills = await ctx.skills.list({ cwd }).catch(() => []);
     const globalNames = new Set(globalSkills.map((skill) => skill.name));
     const contents = new Map();
