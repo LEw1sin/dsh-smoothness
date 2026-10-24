@@ -804,6 +804,7 @@ async function loadUserSkillNames(skills) {
         const enabled = providerEnabled(sessionId, skill.name);
         return {
           ...skill,
+          provider: PROVIDER_NAME,
           rank: 1000,
           locator: { name: skill.name },
           invocation: enabled
@@ -819,6 +820,7 @@ async function loadUserSkillNames(skills) {
         if (providerEnabled(sessionId, skill.name)) continue;
         scopedCandidates.push({
           ...skill,
+          provider: PROVIDER_NAME,
           rank: 1000,
           locator: { name: skill.name },
           invocation: { modelInvocable: false, userInvocable: false },
@@ -1119,6 +1121,7 @@ function toPreset(preset) {
 function toCandidate(skill) {
   return {
     ...skill,
+    provider: PROVIDER_NAME,
     rank: 1000,
     locator: { name: skill.name },
   };
