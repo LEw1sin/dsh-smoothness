@@ -75,7 +75,7 @@ Each directory is a complete `dsh.bundle` package with its own `cordis.patch.yml
 
 ## Discovery
 
-This repository is tagged with the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic, the discovery convention recommended by the DeepSeek Harness README and CONTRIBUTING guide.
+Use the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic for discovery — the convention recommended by the DeepSeek Harness README and CONTRIBUTING guide. Add it under **About → Topics** on this repository.
 
 ## License
 
