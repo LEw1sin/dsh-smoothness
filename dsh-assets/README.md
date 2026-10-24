@@ -50,7 +50,7 @@ installed globally.
 
 ## Grouping
 
-User-installed projects are declared in the Host plugin's `USER_PROJECTS` manifest (Agent Reach, Moli, and HyperFrames at the versions shipped with this repository). Their skills are clustered by project; **every other skill is DSH-provided** and collapses into the DSH presets folder, enabled or not. Within the remaining skills, grouping is:
+User-installed projects are declared in the Host plugin's `USER_PROJECTS` manifest (Agent Reach, Moli, and HyperFrames at the versions shipped with this repository). Their skills form project skill packs; **every other skill is DSH-provided** and forms one **DSH presets** skill pack, enabled or not. The Skills tab lists all of these packs under **Skill packs**; the Plugins tab shows a compact preview of your projects. Within the DSH pack, skills keep their individual switches.
 
 1. A skill whose provider or file path names an installed plugin.
 2. A skill whose name or description matches the plugin's brand.

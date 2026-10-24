@@ -65,7 +65,7 @@ See [dsh-btw/README.md](dsh-btw/README.md) for details and limits.
   | Moli | prebuilt binary | 1.1.19 | `moli-webfetch`, `moli-websearch`, `moli-cdp-server` |
   | HyperFrames | plugin + CLI | 0.8.191 | `hyperframes`, `hyperframes-cli`, `hyperframes-registry`, `media-use`, `figma`, `slideshow`, `remotion-to-hyperframes` |
 
-  Everything not owned by one of those projects is treated as DSH-provided and collapses into the **DSH presets** folder, enabled or not.
+  Both the project packs and one **DSH presets** pack appear under **Skill packs**. The DSH pack contains every skill not owned by a project, enabled or not. The Plugins tab shows a compact preview of your project packs plus the DSH presets/plugins folder.
 - Skills are grouped by owning plugin, by `../skill` references, or by shared name prefix; a plugin-like collection such as HyperFrames becomes one card with its bundled skills on hover.
 - Every row has a session-scoped switch. Disabled skills disappear from that Session's model catalog; disabled rule files stop being injected into its system-prompt context; disabling a plugin disables its attributed skills.
 - `AGENTS.md` / `CLAUDE.md` are shown as DSH-managed and read-only, so they are never double-injected.

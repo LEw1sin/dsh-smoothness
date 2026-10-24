@@ -428,8 +428,22 @@ function createRuntime(ctx) {
 
     const rules = await discoverRules(cwd);
     const projects = buildProjectGroups(skills);
-    const remainingSkills = skills.filter((skill) => !projects.bySkill.has(skill.name));
-    const clustering = clusterSkills(remainingSkills, contents, plugins);
+    const dshSkills = skills.filter((skill) => !projects.bySkill.has(skill.name));
+    const dshPack = dshSkills.length === 0
+      ? undefined
+      : {
+          kind: 'pack',
+          id: 'pack:dsh-presets',
+          title: 'DSH presets',
+          summary: 'Skills shipped with DeepSeek Harness.',
+          dsh: true,
+          skillIds: dshSkills.map((skill) => skill.name),
+        };
+    const clusters = dshPack === undefined ? [...projects.clusters] : [...projects.clusters, dshPack];
+    const skillGroup = new Map([
+      ...projects.skillGroup,
+      ...dshSkills.map((skill) => [skill.name, { groupId: 'pack:dsh-presets', kind: 'pack' }]),
+    ]);
 
     return {
       sessionId,
@@ -440,9 +454,9 @@ function createRuntime(ctx) {
       plugins,
       presets,
       rules,
-      clusters: [...projects.clusters, ...clustering.clusters],
-      skillGroup: new Map([...projects.skillGroup, ...clustering.skillGroup]),
-      ungrouped: clustering.ungrouped,
+      clusters,
+      skillGroup,
+      ungrouped: [],
       scopedOnly: new Map(skills.map((skill) => [skill.name, !globalNames.has(skill.name)])),
     };
   }
@@ -791,6 +805,7 @@ function serializeIndex(index, locale, saved) {
         id: cluster.id,
         title: cluster.title,
         summary: cluster.summary,
+        dsh: cluster.dsh === true,
         toggleable: children.length > 0,
         sessionEnabled: children.length > 0 && enabledCount === children.length,
         mixed: children.length > 0 && enabledCount > 0 && enabledCount < children.length,
