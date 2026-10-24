@@ -45,6 +45,13 @@ window.__ModuleLoader__.load({
       'badge.session': '本会话',
       'badge.profile': 'Profile',
       'badge.readOnly': '只读',
+      'badge.preset': '预设',
+      'folder.dsh': 'DSH 自带',
+      'folder.hint': 'DeepSeek Harness 内置的插件、技能与规则',
+      'section.myPlugins': '我的插件',
+      'section.myPacks': '我的技能包',
+      'section.mySkills': '我的技能',
+      'section.myRules': '我的规则',
       'unit.skills': '个技能',
       'unit.rules': '条规则',
       'row.bundledSkills': '包含的技能',
@@ -96,6 +103,13 @@ window.__ModuleLoader__.load({
       'badge.session': 'This session',
       'badge.profile': 'Profile',
       'badge.readOnly': 'Read-only',
+      'badge.preset': 'Preset',
+      'folder.dsh': 'Provided by DSH',
+      'folder.hint': 'Plugins, skills, and rules shipped with DeepSeek Harness',
+      'section.myPlugins': 'My plugins',
+      'section.myPacks': 'My skill packs',
+      'section.mySkills': 'My skills',
+      'section.myRules': 'My rules',
       'unit.skills': 'skills',
       'unit.rules': 'rules',
       'row.bundledSkills': 'Bundled skills',
@@ -395,6 +409,20 @@ window.__ModuleLoader__.load({
 .dshast-switch[data-checked='true'] .dshast-knob,
 .dshast-switch[data-mixed='true'] .dshast-knob { transform: translateX(12px); }
 .dshast-switch:disabled { opacity: 0.45; cursor: default; }
+.dshast-folder-row { cursor: pointer; }
+.dshast-folder-row[data-kind='folder'] .dshast-icon { color: var(--dsw-alias-brand-primary); }
+.dshast-chevron {
+  display: flex;
+  align-items: center;
+  color: var(--dsw-alias-label-secondary);
+  transition: transform 120ms ease;
+}
+.dshast-folder-row[data-open='true'] .dshast-chevron { transform: rotate(90deg); }
+.dshast-folder-body {
+  margin-left: 24px;
+  padding-left: 8px;
+  border-left: 1px dashed var(--dsw-alias-border-l1);
+}
 .dshast-child {
   margin-left: 30px;
   padding-left: 10px;
@@ -726,6 +754,14 @@ window.__ModuleLoader__.load({
           h('path', { d: 'M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5' }),
         );
       }
+      if (name === 'folder') {
+        return h(
+          'svg',
+          common,
+          h('path', { d: 'M3.5 7.5A2.5 2.5 0 0 1 6 5h3.2l2 2H18a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z' }),
+          h('path', { d: 'M3.8 10h16.4' }),
+        );
+      }
       if (name === 'pack') {
         return h(
           'svg',
@@ -779,7 +815,7 @@ window.__ModuleLoader__.load({
     function AssetsModal({ t }) {
       const state = useStore();
       const data = state.data ?? EMPTY_DATA;
-      const [collapsed, setCollapsed] = React.useState({});
+      const [collapsed, setCollapsed] = React.useState({ 'dsh:plugins': true, 'dsh:skills': true, 'dsh:rules': true });
       const searchRef = React.useRef(null);
 
       React.useEffect(() => {
@@ -819,16 +855,26 @@ window.__ModuleLoader__.load({
         if (plugin.skillIds.length === 0) continue;
         const children = plugin.skillIds.map((id) => skillById.get(id)).filter(Boolean);
         const visible = query === '' || matches(plugin.title) || matches(plugin.summary) || children.some((skill) => matches(skill.name) || matches(skill.summary));
-        if (visible) skillGroups.push({ kind: 'plugin', id: plugin.id, title: plugin.title, summary: plugin.summary, children, toggleable: plugin.toggleable, sessionEnabled: plugin.sessionEnabled, mixed: plugin.mixed, pending: state.pending[`plugin:${plugin.id}`] === true });
+        if (visible) skillGroups.push({ kind: 'plugin', id: plugin.id, title: plugin.title, summary: plugin.summary, children, toggleable: plugin.toggleable, sessionEnabled: plugin.sessionEnabled, mixed: plugin.mixed, isDsh: plugin.core === true, pending: state.pending[`plugin:${plugin.id}`] === true });
       }
       for (const pack of data.packs) {
         const children = pack.skillIds.map((id) => skillById.get(id)).filter(Boolean);
         const visible = query === '' || matches(pack.title) || matches(pack.summary) || children.some((skill) => matches(skill.name) || matches(skill.summary));
-        if (visible) skillGroups.push({ kind: 'pack', id: pack.id, title: pack.title, summary: pack.summary, children, toggleable: pack.toggleable, sessionEnabled: pack.sessionEnabled, mixed: pack.mixed, pending: state.pending[`pack:${pack.id}`] === true });
+        if (visible) skillGroups.push({ kind: 'pack', id: pack.id, title: pack.title, summary: pack.summary, children, toggleable: pack.toggleable, sessionEnabled: pack.sessionEnabled, mixed: pack.mixed, isDsh: children.length > 0 && children.every((skill) => skill.source === 'bundled'), pending: state.pending[`pack:${pack.id}`] === true });
       }
       const ungrouped = data.ungrouped.filter((skill) => query === '' || matches(skill.name) || matches(skill.summary) || matches(skill.provider));
 
       const rules = data.rules.filter((rule) => query === '' || matches(rule.title) || matches(rule.summary) || matches(rule.path));
+
+      const isDshSkill = (skill) => skill.source === 'bundled' || skill.source === 'project-dsh' || skill.source === 'runtime';
+      const dshPlugins = plugins.filter((plugin) => plugin.core === true);
+      const userPlugins = plugins.filter((plugin) => plugin.core !== true);
+      const dshGroups = skillGroups.filter((group) => group.isDsh === true);
+      const userGroups = skillGroups.filter((group) => group.isDsh !== true);
+      const dshUngrouped = ungrouped.filter((skill) => isDshSkill(skill));
+      const userUngrouped = ungrouped.filter((skill) => !isDshSkill(skill));
+      const dshRules = rules.filter((rule) => rule.readOnly === true || rule.managedBy === 'dsh');
+      const userRules = rules.filter((rule) => rule.readOnly !== true && rule.managedBy !== 'dsh');
 
       const toggleCollapsed = (id) => {
         setCollapsed((current) => ({ ...current, [id]: current[id] !== true }));
@@ -850,10 +896,10 @@ window.__ModuleLoader__.load({
                 ),
               )
             : state.tab === 'plugins'
-              ? renderPlugins(t, plugins, data, state, skillById)
+              ? renderPluginsTab(t, { userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed })
               : state.tab === 'skills'
-                ? renderSkills(t, skillGroups, ungrouped, collapsed, toggleCollapsed, state)
-                : renderRules(t, rules, state);
+                ? renderSkillsTab(t, { userGroups, userUngrouped, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed })
+                : renderRulesTab(t, { userRules, dshRules, state, collapsed, toggleCollapsed });
 
       const allEnabled =
         data.counts.enabledSkills === data.counts.skills &&
@@ -995,20 +1041,21 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function renderPlugins(t, plugins, data, state, skillById) {
-      if (plugins.length === 0) return emptyState(t);
-      return plugins.map((plugin) =>
-        h(PluginRow, {
-          key: plugin.id,
-          t,
-          plugin,
-          skills: plugin.skillIds.map((id) => skillById.get(id)).filter(Boolean),
-          pending: state.pending[`plugin:${plugin.id}`] === true,
-        }),
-      );
+    function sectionTitle(t, key) {
+      return h('div', { className: 'dshast-section' }, tr(t, key));
     }
 
-    function renderSkills(t, groups, ungrouped, collapsed, toggleCollapsed, state) {
+    function pluginRow(t, plugin, state, skillById) {
+      return h(PluginRow, {
+        key: plugin.id,
+        t,
+        plugin,
+        skills: plugin.skillIds.map((id) => skillById.get(id)).filter(Boolean),
+        pending: state.pending[`plugin:${plugin.id}`] === true,
+      });
+    }
+
+    function skillGroupNodes(t, groups, collapsed, toggleCollapsed, state) {
       const nodes = [];
       for (const group of groups) {
         const isCollapsed = collapsed[group.id] === true;
@@ -1036,12 +1083,57 @@ window.__ModuleLoader__.load({
           }
         }
       }
-      if (ungrouped.length > 0) {
-        nodes.push(h('div', { key: 'ungrouped-title', className: 'dshast-section' }, tr(t, 'skills.ungrouped')));
-        for (const skill of ungrouped) {
+      return nodes;
+    }
+
+    function ungroupedNodes(t, skills, state, title) {
+      const nodes = [];
+      if (skills.length === 0) return nodes;
+      if (title !== undefined) nodes.push(sectionTitle(t, title));
+      for (const skill of skills) {
+        nodes.push(
+          h(SkillRow, {
+            key: `solo:${skill.id}`,
+            t,
+            skill,
+            pending: state.pending[`skill:${skill.id}`] === true,
+            parentOff: false,
+            child: false,
+          }),
+        );
+      }
+      return nodes;
+    }
+
+    function renderPluginsTab(t, options) {
+      const { userPlugins, dshPlugins, userGroups, userUngrouped, state, skillById, collapsed, toggleCollapsed } = options;
+      const userPacks = userGroups.filter((group) => group.kind === 'pack');
+      const nodes = [];
+
+      if (userPlugins.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myPlugins'));
+        for (const plugin of userPlugins) nodes.push(pluginRow(t, plugin, state, skillById));
+      }
+      if (userPacks.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myPacks'));
+        for (const group of userPacks) {
+          nodes.push(
+            h(SkillGroupRow, {
+              key: `preview:${group.id}`,
+              t,
+              group,
+              collapsed: true,
+              onToggleCollapse: () => store.setTab('skills'),
+            }),
+          );
+        }
+      }
+      if (userUngrouped.length > 0) {
+        nodes.push(sectionTitle(t, 'section.mySkills'));
+        for (const skill of userUngrouped) {
           nodes.push(
             h(SkillRow, {
-              key: `solo:${skill.id}`,
+              key: `plugins:solo:${skill.id}`,
               t,
               skill,
               pending: state.pending[`skill:${skill.id}`] === true,
@@ -1051,11 +1143,94 @@ window.__ModuleLoader__.load({
           );
         }
       }
+
+      if (dshPlugins.length > 0) {
+        const key = 'dsh:plugins';
+        nodes.push(
+          h(
+            FolderRow,
+            {
+              key,
+              t,
+              title: 'folder.dsh',
+              count: dshPlugins.length,
+              open: collapsed[key] !== true,
+              onToggle: () => toggleCollapsed(key),
+            },
+            dshPlugins.map((plugin) => pluginRow(t, plugin, state, skillById)),
+          ),
+        );
+      }
+
+      return nodes.length === 0 ? emptyState(t) : nodes;
+    }
+
+    function renderSkillsTab(t, options) {
+      const { userGroups, userUngrouped, dshGroups, dshUngrouped, state, collapsed, toggleCollapsed } = options;
+      const nodes = [];
+
+      if (userGroups.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myPacks'));
+        nodes.push(...skillGroupNodes(t, userGroups, collapsed, toggleCollapsed, state));
+      }
+      if (userUngrouped.length > 0) {
+        nodes.push(...ungroupedNodes(t, userUngrouped, state, 'section.mySkills'));
+      }
+
+      if (dshGroups.length > 0 || dshUngrouped.length > 0) {
+        const key = 'dsh:skills';
+        const children = [
+          ...skillGroupNodes(t, dshGroups, collapsed, toggleCollapsed, state),
+          ...ungroupedNodes(t, dshUngrouped, state, 'skills.ungrouped'),
+        ];
+        const dshSkillCount = dshGroups.reduce((count, group) => count + group.children.length, 0) + dshUngrouped.length;
+        nodes.push(
+          h(
+            FolderRow,
+            {
+              key,
+              t,
+              title: 'folder.dsh',
+              count: dshSkillCount,
+              open: collapsed[key] !== true,
+              onToggle: () => toggleCollapsed(key),
+            },
+            children,
+          ),
+        );
+      }
+
+      return nodes.length === 0 ? emptyState(t) : nodes;
+    }
+
+    function renderRulesTab(t, options) {
+      const { userRules, dshRules, state, collapsed, toggleCollapsed } = options;
+      const nodes = [];
+      if (userRules.length > 0) {
+        nodes.push(sectionTitle(t, 'section.myRules'));
+        nodes.push(...renderRules(t, userRules, state));
+      }
+      if (dshRules.length > 0) {
+        const key = 'dsh:rules';
+        nodes.push(
+          h(
+            FolderRow,
+            {
+              key,
+              t,
+              title: 'folder.dsh',
+              count: dshRules.length,
+              open: collapsed[key] !== true,
+              onToggle: () => toggleCollapsed(key),
+            },
+            renderRules(t, dshRules, state),
+          ),
+        );
+      }
       return nodes.length === 0 ? emptyState(t) : nodes;
     }
 
     function renderRules(t, rules, state) {
-      if (rules.length === 0) return emptyState(t);
       return rules.map((rule) =>
         h(RuleRow, {
           key: rule.id,
@@ -1063,6 +1238,45 @@ window.__ModuleLoader__.load({
           rule,
           pending: state.pending[`rule:${rule.id}`] === true,
         }),
+      );
+    }
+
+    function FolderRow({ t, title, count, open, onToggle, children }) {
+      return h(
+        'div',
+        { className: 'dshast-folder' },
+        h(
+          'div',
+          {
+            className: 'dshast-row dshast-folder-row',
+            'data-kind': 'folder',
+            'data-open': open ? 'true' : 'false',
+            role: 'button',
+            tabIndex: 0,
+            'aria-expanded': open,
+            onClick: onToggle,
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onToggle();
+              }
+            },
+          },
+          h('div', { className: 'dshast-icon' }, icon('folder', 15)),
+          h(
+            'div',
+            { className: 'dshast-main' },
+            h(
+              'div',
+              { className: 'dshast-row-title-line' },
+              h('span', { className: 'dshast-row-title' }, tr(t, title)),
+              h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, String(count)),
+            ),
+            h('div', { className: 'dshast-summary' }, tr(t, 'folder.hint')),
+          ),
+          h('span', { className: 'dshast-chevron' }, icon('chevron', 13)),
+        ),
+        open ? h('div', { className: 'dshast-folder-body' }, children) : null,
       );
     }
 
@@ -1222,6 +1436,7 @@ window.__ModuleLoader__.load({
             { className: 'dshast-row-title-line' },
             h('span', { className: `dshast-row-title ${child ? 'dshast-mono' : ''}` }, skill.name),
             skill.userInvocable ? h('span', { className: 'dshast-badge' }, tr(t, 'badge.session')) : null,
+            skill.scopedOnly ? h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, tr(t, 'badge.preset')) : null,
             skill.modelInvocable ? null : h('span', { className: 'dshast-badge' }, 'user-only'),
           ),
           h('div', { className: 'dshast-summary' }, skill.summary),

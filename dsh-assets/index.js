@@ -183,6 +183,7 @@ function createRuntime(ctx) {
   let writeTimer = null;
   let disposed = false;
   const providerDepth = new Map();
+  const discovering = new Set();
   const offs = [];
 
   const emptySession = () => ({ disabledSkills: [], disabledRules: [], disabledPlugins: [], updatedAt: 0 });
@@ -333,10 +334,24 @@ function createRuntime(ctx) {
   }
 
   async function buildIndex(sessionId, cwd) {
-    const skills = await ctx.skills.list({ cwd }).catch((error) => {
-      warn('could not list skills', error);
-      return [];
-    });
+    discovering.add(sessionId);
+    try {
+      return await buildIndexInner(sessionId, cwd);
+    } finally {
+      discovering.delete(sessionId);
+    }
+  }
+
+  async function buildIndexInner(sessionId, cwd) {
+    const agent = ctx.agents.get(sessionId);
+    const skills = await ctx.skills
+      .list(agent === undefined ? { cwd } : { scope: agent, cwd })
+      .catch((error) => {
+        warn('could not list skills', error);
+        return [];
+      });
+    const globalSkills = await ctx.skills.list({ cwd }).catch(() => []);
+    const globalNames = new Set(globalSkills.map((skill) => skill.name));
     const contents = new Map();
     for (const skill of skills) {
       if (typeof skill.path !== 'string' || skill.path === '') continue;
@@ -368,6 +383,7 @@ function createRuntime(ctx) {
       clusters: clustering.clusters,
       skillGroup: clustering.skillGroup,
       ungrouped: clustering.ungrouped,
+      scopedOnly: new Map(skills.map((skill) => [skill.name, !globalNames.has(skill.name)])),
     };
   }
 
@@ -401,15 +417,10 @@ function createRuntime(ctx) {
         (!Array.isArray(saved.disabledPlugins) || saved.disabledPlugins.length === 0)
       );
       if (plain) return skills.map(toCandidate);
+      if (discovering.has(String(sessionId))) return skills.map(toCandidate);
 
-      try {
-        await ensureIndex(sessionId, { cwd });
-      } catch (error) {
-        warn(`could not build the filter index for ${String(sessionId)}`, error);
-        return skills.map(toCandidate);
-      }
-
-      return skills.map((skill) => {
+      const index = indexes.get(String(sessionId));
+      const globalCandidates = skills.map((skill) => {
         const enabled = providerEnabled(sessionId, skill.name);
         return {
           ...skill,
@@ -420,6 +431,20 @@ function createRuntime(ctx) {
             : { modelInvocable: false, userInvocable: false },
         };
       });
+      if (index === undefined || index.scopedOnly === undefined) return globalCandidates;
+
+      const scopedCandidates = [];
+      for (const skill of index.skills) {
+        if (index.scopedOnly.get(skill.name) !== true) continue;
+        if (providerEnabled(sessionId, skill.name)) continue;
+        scopedCandidates.push({
+          ...skill,
+          rank: 1000,
+          locator: { name: skill.name },
+          invocation: { modelInvocable: false, userInvocable: false },
+        });
+      }
+      return [...globalCandidates, ...scopedCandidates];
     } finally {
       providerDepth.delete(depthKey);
     }
@@ -629,6 +654,7 @@ function serializeIndex(index, locale, saved) {
       groupId: group?.groupId ?? null,
       groupKind: group?.kind ?? 'skill',
       pluginId: group?.pluginId ?? null,
+      scopedOnly: index.scopedOnly?.get(skill.name) === true,
       enabled: isSkillEnabled(skill),
       modelInvocable: skill.invocation?.modelInvocable !== false,
       userInvocable: skill.invocation?.userInvocable !== false,

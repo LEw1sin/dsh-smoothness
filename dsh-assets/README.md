@@ -9,11 +9,14 @@ Session.
 ## What it shows
 
 - **Plugins** — the bundles installed in this profile, with their version and a
-  one-sentence description. A plugin that ships skills shows them on hover
-  (click to expand).
-- **Skills** — the skills visible to this Session, grouped under the plugin or
-  skill pack that owns them. Hovering a group lists its skills; each skill has
-  its own switch.
+  one-sentence description. DSH-provided bundles are collapsed under one
+  **DSH** folder; user plugins are listed directly. A plugin that ships skills
+  shows them on hover (click to expand).
+- **Skills** — the skills visible to this Session, including preset-scoped
+  user skills (Moli, Agent Reach, and similar), grouped under the plugin or
+  skill pack that owns them. DSH-bundled skills sit under the **DSH** folder;
+  your packs and solo skills are listed directly. Hovering a group lists its
+  skills; each skill has its own switch.
 - **Rules** — `AGENTS.md` / `CLAUDE.md`, `RULE.md`, and `.dsh/rules`,
   `.agents/rules`, `.cursor/rules` files. `AGENTS.md` / `CLAUDE.md` are owned by
   DSH's workspace-instructions layer and shown read-only; extra rule files are
