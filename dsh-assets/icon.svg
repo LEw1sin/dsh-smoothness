@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Assets">
+  <defs>
+    <linearGradient id="assets-bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1f9d8a"/>
+      <stop offset="1" stop-color="#14655f"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="15" fill="url(#assets-bg)"/>
+  <rect x="13" y="13" width="15" height="15" rx="4" fill="#ffffff" fill-opacity="0.96"/>
+  <rect x="33" y="13" width="18" height="15" rx="4" fill="#ffffff" fill-opacity="0.72"/>
+  <rect x="13" y="33" width="15" height="18" rx="4" fill="#ffffff" fill-opacity="0.72"/>
+  <rect x="33" y="33" width="18" height="18" rx="4" fill="#ffffff" fill-opacity="0.4"/>
+  <circle cx="47" cy="19" r="3.2" fill="#ffd166"/>
+  <path d="M38 47h14" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-opacity="0.95"/>
+</svg>

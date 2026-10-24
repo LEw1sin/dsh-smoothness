@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Side Chat",
+    "description": "Ask about the current session's progress or chat off-topic without touching the main conversation.",
+    "detail": "docs/DETAIL.md"
+  }
+}

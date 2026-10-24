@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "旁聊",
+    "description": "读取当前会话的进度，或聊点别的；不打断、也不写入主会话。",
+    "detail": "docs/DETAIL.zh.md"
+  }
+}

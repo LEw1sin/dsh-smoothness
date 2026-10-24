@@ -1,0 +1,54 @@
+{
+  "name": "@lew1sin/dsh-assets",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Assets: a session-scoped browser for installed skills, rules, and plugins with one-line summaries.",
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "assets",
+    "skills",
+    "rules"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "author": "LEw1sin",
+  "homepage": "https://github.com/LEw1sin/dsh-smoothness#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LEw1sin/dsh-smoothness.git",
+    "directory": "dsh-assets"
+  },
+  "bugs": {
+    "url": "https://github.com/LEw1sin/dsh-smoothness/issues"
+  }
+}
