@@ -884,7 +884,7 @@ window.__ModuleLoader__.load({
 
       const rules = data.rules.filter((rule) => query === '' || matches(rule.title) || matches(rule.summary) || matches(rule.path));
 
-      const isDshSkill = (skill) => skill.source === 'bundled' || skill.source === 'project-dsh' || skill.source === 'runtime';
+      const isDshSkill = (skill) => skill.source === 'bundled' || skill.source === 'project-agents' || skill.source === 'project-dsh' || skill.source === 'runtime';
       const presetRows = Array.isArray(data.presets) ? data.presets : [];
       const dshPresets = presetRows.filter((preset) => preset.core === true);
       const userPresets = presetRows.filter((preset) => preset.core !== true);
@@ -1469,7 +1469,6 @@ window.__ModuleLoader__.load({
             { className: 'dshast-row-title-line' },
             h('span', { className: `dshast-row-title ${child ? 'dshast-mono' : ''}` }, skill.name),
             skill.userInvocable ? h('span', { className: 'dshast-badge' }, tr(t, 'badge.session')) : null,
-            skill.scopedOnly ? h('span', { className: 'dshast-badge', 'data-tone': 'brand' }, tr(t, 'badge.preset')) : null,
             skill.modelInvocable ? null : h('span', { className: 'dshast-badge' }, 'user-only'),
           ),
           h('div', { className: 'dshast-summary' }, skill.summary),

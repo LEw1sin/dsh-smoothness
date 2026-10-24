@@ -24,7 +24,7 @@ const STATE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PROVIDER_NAME = 'dsh-assets-session-filter';
 
 const GENERIC_STEMS = new Set([
-  'add', 'agent', 'asset', 'auto', 'chat', 'code', 'create', 'edit', 'find',
+  'add', 'agent', 'asset', 'auto', 'chat', 'code', 'create', 'dsh', 'edit', 'find',
   'get', 'goal', 'list', 'loop', 'make', 'model', 'new', 'open', 'plugin',
   'read', 'review', 'rule', 'run', 'send', 'session', 'set', 'share', 'skill',
   'status', 'tool', 'update', 'use', 'workspace', 'write',

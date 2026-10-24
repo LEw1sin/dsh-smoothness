@@ -15,9 +15,10 @@ Session.
   expand).
 - **Skills** — the skills visible to this Session, including preset-scoped
   user skills (Moli, Agent Reach, and similar), grouped under the plugin or
-  skill pack that owns them. DSH-bundled skills sit under the **DSH presets**
-  folder; your packs and solo skills are listed directly. Hovering a group
-  lists its skills; each skill has its own switch.
+  skill pack that owns them. DSH-shipped project skills (for example
+  `agent-experience`) and bundled skills sit under the **DSH presets** folder;
+  your packs and solo skills are listed directly. Hovering a group lists its
+  skills; each skill has its own switch.
 - **Rules** — `AGENTS.md` / `CLAUDE.md`, `RULE.md`, and `.dsh/rules`,
   `.agents/rules`, `.cursor/rules` files. `AGENTS.md` / `CLAUDE.md` are owned by
   DSH's workspace-instructions layer and shown read-only; extra rule files are
