@@ -18,7 +18,7 @@ Requirements:
 - the Web profile (`dsh web`)
 - npm/pnpm available to `dsh plugin`
 
-Install both from this repository with the GitHub subdirectory form:
+Install all three from this repository with the GitHub subdirectory form:
 
 ```sh
 dsh plugin --profile web add "github:LEw1sin/dsh-smoothness#path:/dsh-btw"
@@ -26,7 +26,7 @@ dsh plugin --profile web add "github:LEw1sin/dsh-smoothness#path:/dsh-assets"
 dsh plugin --profile web add "github:LEw1sin/dsh-smoothness#path:/dsh-save-load"
 ```
 
-Or install only one of them. The commands use pnpm's `path:` selector, so no root package is required.
+Or install a subset of them. The commands use pnpm's `path:` selector, so no root package is required.
 
 After installation, restart the Web host (or let the running profile reload), then refresh the page. A `旁聊` / `Side chat` button and an `资产` / `Assets` button appear below the composer, and `存档 / 读档` (`Archive / Load`) appears in the `/` command menu.
 
