@@ -865,6 +865,7 @@ function serializeIndex(index, locale, saved) {
     builtAt: index.builtAt,
     plugins,
     presets,
+    projects,
     packs,
     skills,
     ungrouped,
