@@ -1,6 +1,6 @@
 {
   "name": "@lew1sin/dsh-btw",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Side Chat: ask about the current Session or chat off-topic without touching the main conversation.",
   "license": "MIT",

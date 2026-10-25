@@ -976,6 +976,17 @@ window.__ModuleLoader__.load({
             BtwLauncher,
           ),
         );
+        ctx.slots.inject('conversation.hero.options', () =>
+          ctx.slots.register(
+            {
+              name: 'conversation.hero.options',
+              id: 'dsh-btw-launcher-hero',
+              order: 10,
+              locale: NS,
+            },
+            BtwLauncher,
+          ),
+        );
         ctx.slots.inject('shell.overlay', () =>
           ctx.slots.register(
             {
